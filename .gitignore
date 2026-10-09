@@ -1,0 +1,11 @@
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.venv/
+dist/
+build/
+*.xlsx
+*.log
+

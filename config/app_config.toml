@@ -1,0 +1,4 @@
+product_display_name = "Retirement Financial Tracking and Action System"
+product_short_name = "RFTAS"
+default_workbook_name = "retirement_case.xlsx"
+
