@@ -4,6 +4,7 @@ Version: 0.1.0
 Summary: Foundational technical modules for a retirement financial tracking and action system.
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
+Requires-Dist: gradio>=5.0
 Requires-Dist: openpyxl>=3.1
 Requires-Dist: pydantic<3,>=2.9
 Provides-Extra: dev
@@ -14,23 +15,50 @@ Requires-Dist: pytest>=8.3; extra == "dev"
 This repository is the first technical foundation for a retirement planning and tracking system with:
 
 - a configurable product/display name
-- typed domain models for household data
-- a deterministic yearly forecast engine
+- typed domain models for retirement household data
+- a deterministic yearly forecast and calculation engine
 - an in-memory session store
-- workbook import/export scaffolding for user-owned data files
+- workbook import/export scaffolding for user-owned case files
 
 ## Initial module layout
 
 - `src/retirement_financial_tracking/config/`
   - app metadata and configurable display name
 - `src/retirement_financial_tracking/domain/`
-  - typed domain models for people, accounts, recurring cash flows, and forecast output
+  - typed domain models for household settings, people, buckets, accounts, holdings, recurring cash flows, actual balances, and forecast output
 - `src/retirement_financial_tracking/services/`
-  - deterministic yearly forecast logic
+  - deterministic yearly forecast logic using actual balance snapshots, Social Security inputs, healthcare costs, planned spending growth, and effective tax assumptions
 - `src/retirement_financial_tracking/storage/`
   - ephemeral in-memory case/session storage
 - `src/retirement_financial_tracking/io/`
   - workbook import/export helpers
+
+## Workbook schema
+
+The workbook import/export layer now supports a retirement-specific case file with these sheets:
+
+- `Household`
+- `People`
+- `Buckets`
+- `Accounts`
+- `Holdings`
+- `Cash Flows`
+- `Actual Balances`
+- `Forecast` (exported when a forecast is provided)
+
+The schema is intended to capture real retirement-planning inputs such as filing status, inflation assumptions, Social Security estimates, healthcare costs, bucket targets, custodian accounts, holdings, maturity data, and actual account balance snapshots.
+
+## Current calculation behavior
+
+The current forecast layer supports:
+
+- opening balances overridden by the latest actual balance snapshot per account
+- recurring explicit cash flows
+- derived Social Security income from claiming-age inputs
+- derived annual healthcare expense from per-person healthcare inputs
+- inflation-adjusted planned living expenses from household settings
+- effective-tax estimation when no explicit tax cash flow is provided
+- yearly account growth using a simple expected annual return rate
 
 ## Data ownership model
 
@@ -41,4 +69,3 @@ The code is structured around an internal validated model, while allowing user d
 ```bash
 python -m pytest
 ```
-

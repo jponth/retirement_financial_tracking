@@ -9,6 +9,7 @@ description = "Foundational technical modules for a retirement financial trackin
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "gradio>=5.0",
   "openpyxl>=3.1",
   "pydantic>=2.9,<3",
 ]
@@ -26,4 +27,3 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
