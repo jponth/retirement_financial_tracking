@@ -11,7 +11,7 @@ from retirement_financial_tracking.ui_helpers import (
     EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
     UIPlanPayload,
     export_plan_for_ui,
-    forecast_for_ui,
+    forecast_with_report_for_ui,
     import_plan_to_ui,
     plan_to_ui_values,
     sample_plan,
@@ -302,6 +302,30 @@ CSS = """
     #account-forecast-table .body-cell[data-col="15"] {
         text-align: right !important;
     }
+
+    #report-overlay {
+        position: fixed !important;
+        inset: 0;
+        z-index: 1000;
+        padding: 3vh 4vw;
+        background: rgba(15, 23, 42, 0.55);
+        overflow-y: auto;
+    }
+
+    #report-modal-card {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 28px;
+        border-radius: 18px;
+        background: white;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+    }
+
+    #report-modal-card table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
 """
 
 
@@ -327,6 +351,11 @@ def build_ui() -> gr.Blocks:
             load_sample_btn = gr.Button("Load Sample Case", variant="secondary")
             workbook_input = gr.File(label="Import Workbook", type="filepath")
             run_forecast_btn = gr.Button("Run Forecast", variant="primary")
+            view_report_btn = gr.Button(
+                "View Report",
+                variant="secondary",
+                interactive=False,
+            )
             export_mode = gr.Dropdown(
                 label="Export Mode",
                 choices=[
@@ -667,6 +696,17 @@ def build_ui() -> gr.Blocks:
             ],
             interactive=False,
         )
+        report_markdown_state = gr.State("")
+        with gr.Column(visible=False, elem_id="report-overlay") as report_overlay:
+            with gr.Column(elem_id="report-modal-card"):
+                with gr.Row():
+                    gr.Markdown("## Forecast Report")
+                    close_report_btn = gr.Button("Close", variant="secondary")
+                report_popup_markdown = gr.Markdown()
+                report_pdf_file = gr.File(
+                    label="Forecast Report PDF",
+                    interactive=False,
+                )
 
         inputs = [
             plan_id,
@@ -781,12 +821,30 @@ def build_ui() -> gr.Blocks:
         run_forecast_btn.click(
             fn=run_forecast_ui,
             inputs=inputs,
-            outputs=[forecast_table, account_forecast_table, forecast_summary, status],
+            outputs=[
+                forecast_table,
+                account_forecast_table,
+                forecast_summary,
+                status,
+                report_markdown_state,
+                report_popup_markdown,
+                report_pdf_file,
+                view_report_btn,
+            ],
         )
         export_btn.click(
             fn=export_workbook_ui,
             inputs=inputs + [export_mode, export_directory, imported_workbook_path],
             outputs=[export_file, status],
+        )
+        view_report_btn.click(
+            fn=open_report_popup,
+            inputs=[report_markdown_state],
+            outputs=[report_overlay, report_popup_markdown],
+        )
+        close_report_btn.click(
+            fn=close_report_popup,
+            outputs=[report_overlay],
         )
 
     return demo
@@ -819,10 +877,28 @@ def load_workbook_case(path: str | None):
 def run_forecast_ui(*args):
     try:
         plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args))
-        table, account_table, summary = forecast_for_ui(plan)
-        return table, account_table, summary, "Forecast completed successfully."
+        table, account_table, summary, report_markdown, report_pdf_path = forecast_with_report_for_ui(plan)
+        return (
+            table,
+            account_table,
+            summary,
+            "Forecast completed successfully.",
+            report_markdown,
+            report_markdown,
+            report_pdf_path,
+            gr.update(interactive=True),
+        )
     except Exception as exc:
-        return [], [], f"Forecast failed.\n\n`{exc}`", f"Forecast failed: `{exc}`"
+        return (
+            [],
+            [],
+            f"Forecast failed.\n\n`{exc}`",
+            f"Forecast failed: `{exc}`",
+            "",
+            "",
+            None,
+            gr.update(interactive=False),
+        )
 
 
 def export_workbook_ui(*args):
@@ -840,6 +916,16 @@ def export_workbook_ui(*args):
         return path, f"Workbook exported to `{path}`"
     except Exception as exc:
         return None, f"Export failed: `{exc}`"
+
+
+def open_report_popup(markdown: str):
+    if not markdown:
+        return gr.update(visible=False), "Run the forecast to generate a report."
+    return gr.update(visible=True), markdown
+
+
+def close_report_popup():
+    return gr.update(visible=False)
 
 
 def _ui_output_tuple(values: dict[str, object], status_message: str, imported_path: str | None):

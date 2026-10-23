@@ -154,6 +154,8 @@ A starter Gradio app is available in `app.py`. It supports:
 - running the forecast
 - viewing both household-level and account-level forecast tables
 - viewing forecast summary information including depletion timing, tax model, tax projection mode, and Monte Carlo summary lines
+- opening a presentable forecast report in the app as a popup markdown view
+- downloading a PDF rendition of that same forecast report from the app
 - exporting a workbook using one of three modes:
   - `save_updated_copy`
   - `update_imported_workbook`
@@ -184,6 +186,27 @@ The recurring recommended-action definitions are read from:
 - `src/retirement_financial_tracking/config/recommended_actions_data/default_actions.json`
 
 Forecast-triggered actions are still derived from the plan and forecast output, but they now render without hardcoded calendar years in the summary sheet.
+
+### In-app forecast report
+
+After a forecast run, the app now prepares a presentable report in two forms from the same underlying report model:
+
+- a popup markdown report in the Gradio UI
+- a downloadable PDF report
+
+The current report includes:
+
+- title and run context
+- executive summary
+- key assumptions
+- key warnings / observations
+- next 5 years preview
+- recommended actions
+- annual cash flow and tax table
+- annual account balances table
+- annual balances by bucket table
+- run metadata
+- modeling limitations
 
 ### Workbook behavior
 

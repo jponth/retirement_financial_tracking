@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import app as app_module
 import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
     Account,
@@ -32,6 +33,11 @@ from retirement_financial_tracking.domain.models import (
     WithdrawalTaxPriority,
 )
 from retirement_financial_tracking.io import export_case_workbook, import_case_workbook
+from retirement_financial_tracking.reporting import (
+    build_forecast_report,
+    generate_report_assets,
+    render_report_markdown,
+)
 from retirement_financial_tracking.services.forecasting import generate_forecast
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
@@ -1997,3 +2003,40 @@ def test_export_adds_headline_summary_lines_to_forecast_summary_sheet(tmp_path, 
         assert len(sheet._charts) == 0
     finally:
         updated_workbook.close()
+
+
+def test_forecast_report_markdown_and_pdf_generation(tmp_path):
+    plan = sample_plan("3-Bucket Sample")
+    forecast = generate_forecast(
+        plan,
+        ProjectionSettings(start_year=plan.base_year, number_of_years=5),
+    )
+
+    report = build_forecast_report(
+        plan,
+        forecast,
+        generated_on="23-Oct-2026 10:15:30 AM",
+        source_workbook_name="sample.xlsx",
+    )
+    markdown = render_report_markdown(report)
+    _, generated_markdown, pdf_path = generate_report_assets(
+        plan,
+        forecast,
+        source_workbook_name="sample.xlsx",
+        output_directory=tmp_path,
+    )
+
+    assert "# Retirement Forecast Report" in markdown
+    assert "## 1. Executive Summary" in markdown
+    assert "## 5. Recommended Actions" in markdown
+    assert "| Year | Income | Withdrawals | Expenses | Taxes | RMD | Short-Term | Intermediate-Term | Long-Term | End Assets |" in markdown
+    assert "Planning projection only." in markdown
+    assert generated_markdown.startswith("# Retirement Forecast Report")
+    assert Path(pdf_path).exists()
+    assert Path(pdf_path).suffix == ".pdf"
+    assert Path(pdf_path).stat().st_size > 0
+
+
+def test_build_ui_instantiates_with_report_popup():
+    demo = app_module.build_ui()
+    assert demo is not None

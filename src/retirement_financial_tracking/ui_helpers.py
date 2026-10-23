@@ -36,6 +36,7 @@ from retirement_financial_tracking.domain.models import (
     WithdrawalTaxPriority,
 )
 from retirement_financial_tracking.io import export_case_workbook, import_case_workbook
+from retirement_financial_tracking.reporting import generate_report_assets
 from retirement_financial_tracking.services import generate_forecast
 
 
@@ -813,6 +814,21 @@ def import_plan_to_ui(path: str) -> dict[str, object]:
 
 
 def forecast_for_ui(plan: HouseholdPlan) -> tuple[list[list[object]], list[list[object]], str]:
+    _, table, account_table, summary = _forecast_ui_outputs(plan)
+    return table, account_table, summary
+
+
+def forecast_with_report_for_ui(
+    plan: HouseholdPlan,
+) -> tuple[list[list[object]], list[list[object]], str, str, str]:
+    forecast, table, account_table, summary = _forecast_ui_outputs(plan)
+    _, report_markdown, report_pdf_path = generate_report_assets(plan, forecast)
+    return table, account_table, summary, report_markdown, report_pdf_path
+
+
+def _forecast_ui_outputs(
+    plan: HouseholdPlan,
+) -> tuple[ForecastResult, list[list[object]], list[list[object]], str]:
     result = generate_forecast(
         plan,
         ProjectionSettings(
@@ -897,7 +913,7 @@ def forecast_for_ui(plan: HouseholdPlan) -> tuple[list[list[object]], list[list[
         probability_lines = _monte_carlo_probability_summary_lines(plan, result)
         summary_lines.extend(probability_lines)
     summary = "\n".join(summary_lines)
-    return table, account_table, summary
+    return result, table, account_table, summary
 
 
 def _depletion_summary_line(rows: list[HouseholdForecastRow]) -> str:
