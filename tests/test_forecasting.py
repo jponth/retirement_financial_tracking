@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
     Account,
     AccountType,
@@ -22,6 +23,8 @@ from retirement_financial_tracking.domain.models import (
     RothHandlingPolicy,
     ReturnModelType,
     ReturnScenarioType,
+    TaxModelType,
+    TaxProjectionMode,
     TaxTreatment,
     WithdrawalAccountTypePriority,
     WithdrawalAllocationMethod,
@@ -168,6 +171,8 @@ def test_workbook_round_trip_preserves_plan_data(tmp_path):
         settings=HouseholdSettings(
             state="CT",
             filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+            tax_model=TaxModelType.EFFECTIVE_RATE,
+            tax_projection_mode=TaxProjectionMode.INFLATION_ADJUSTED,
             projection_years=30,
             inflation_rate=0.03,
             default_bucket_expense_years=3.0,
@@ -338,6 +343,8 @@ def test_workbook_round_trip_preserves_plan_data(tmp_path):
     assert imported.plan_id == "case-2"
     assert imported.household_name == "Example Household"
     assert imported.settings.filing_status is FilingStatus.MARRIED_FILING_JOINTLY
+    assert imported.settings.tax_model is TaxModelType.EFFECTIVE_RATE
+    assert imported.settings.tax_projection_mode is TaxProjectionMode.INFLATION_ADJUSTED
     assert imported.settings.target_cash_reserve == Decimal("69000.00")
     assert imported.settings.default_bucket_expense_years == 3.0
     assert imported.settings.rmd_start_age == 73
@@ -645,6 +652,8 @@ def test_ui_values_to_plan_accepts_gradio_dataframe_values():
     assert restored.cash_flows[0].annual_amount == Decimal("100.00")
     assert restored.settings.default_bucket_expense_years == original.settings.default_bucket_expense_years
     assert restored.settings.return_model_type == original.settings.return_model_type
+    assert restored.settings.tax_model == original.settings.tax_model
+    assert restored.settings.tax_projection_mode == original.settings.tax_projection_mode
     assert restored.settings.return_scenario_type == original.settings.return_scenario_type
     assert restored.settings.monte_carlo_simulations == original.settings.monte_carlo_simulations
     assert restored.settings.monte_carlo_seed == original.settings.monte_carlo_seed
@@ -1007,6 +1016,133 @@ def test_forecast_derives_hsa_contributions_and_reduces_tax_base():
     assert result.account_rows[0].account_id == "hsa-1"
     assert result.account_rows[0].contributions == Decimal("5300.00")
     assert result.rows[2].hsa_contribution_total == Decimal("0.00")
+
+
+def test_forecast_supports_bracket_based_federal_tax():
+    plan = HouseholdPlan(
+        plan_id="case-tax-brackets-fed",
+        household_name="Bracket Federal Household",
+        base_year=2026,
+        settings=HouseholdSettings(
+            state="TX",
+            filing_status=FilingStatus.SINGLE,
+            tax_model=TaxModelType.BRACKET_BASED,
+            tax_projection_mode=TaxProjectionMode.STATIC,
+            planned_annual_spending=Decimal("0.00"),
+            auto_fund_shortfall=False,
+        ),
+        people=[
+            Person(
+                person_id="p1",
+                role=PersonRole.PRIMARY,
+                display_name="Taylor",
+                birth_year=1970,
+            )
+        ],
+        cash_flows=[
+            RecurringCashFlow(
+                flow_id="income-1",
+                flow_name="Consulting",
+                category=CashFlowCategory.INCOME,
+                annual_amount=Decimal("50000.00"),
+                start_year=2026,
+                end_year=2026,
+            )
+        ],
+    )
+
+    result = generate_forecast(
+        plan=plan,
+        settings=ProjectionSettings(start_year=2026, number_of_years=1),
+    )
+
+    assert result.rows[0].derived_tax_total == Decimal("4016.00")
+    assert result.rows[0].tax_total == Decimal("4016.00")
+
+
+def test_forecast_supports_bracket_based_federal_and_connecticut_tax():
+    plan = HouseholdPlan(
+        plan_id="case-tax-brackets-ct",
+        household_name="Bracket CT Household",
+        base_year=2026,
+        settings=HouseholdSettings(
+            state="CT",
+            filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+            tax_model=TaxModelType.BRACKET_BASED,
+            tax_projection_mode=TaxProjectionMode.STATIC,
+            planned_annual_spending=Decimal("0.00"),
+            auto_fund_shortfall=False,
+        ),
+        people=[
+            Person(
+                person_id="p1",
+                role=PersonRole.PRIMARY,
+                display_name="Alex",
+                birth_year=1970,
+            )
+        ],
+        cash_flows=[
+            RecurringCashFlow(
+                flow_id="income-1",
+                flow_name="Salary",
+                category=CashFlowCategory.INCOME,
+                annual_amount=Decimal("100000.00"),
+                start_year=2026,
+                end_year=2026,
+            )
+        ],
+    )
+
+    result = generate_forecast(
+        plan=plan,
+        settings=ProjectionSettings(start_year=2026, number_of_years=1),
+    )
+
+    assert result.rows[0].derived_tax_total == Decimal("11152.00")
+    assert result.rows[0].tax_total == Decimal("11152.00")
+
+
+def test_forecast_supports_inflation_adjusted_bracket_based_taxes():
+    plan = HouseholdPlan(
+        plan_id="case-tax-brackets-ct-inflation",
+        household_name="Bracket CT Inflation Household",
+        base_year=2026,
+        settings=HouseholdSettings(
+            state="CT",
+            filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+            tax_model=TaxModelType.BRACKET_BASED,
+            tax_projection_mode=TaxProjectionMode.INFLATION_ADJUSTED,
+            inflation_rate=0.03,
+            planned_annual_spending=Decimal("0.00"),
+            auto_fund_shortfall=False,
+        ),
+        people=[
+            Person(
+                person_id="p1",
+                role=PersonRole.PRIMARY,
+                display_name="Alex",
+                birth_year=1970,
+            )
+        ],
+        cash_flows=[
+            RecurringCashFlow(
+                flow_id="income-1",
+                flow_name="Salary",
+                category=CashFlowCategory.INCOME,
+                annual_amount=Decimal("100000.00"),
+                start_year=2026,
+                end_year=2026,
+            )
+        ],
+    )
+
+    result = generate_forecast(
+        plan=plan,
+        settings=ProjectionSettings(start_year=2026, number_of_years=1),
+    )
+
+    assert result.rows[0].derived_tax_total == Decimal("10856.76")
+    assert result.rows[0].tax_total == Decimal("10856.76")
 
 
 def test_forecast_automatically_uses_hsa_for_healthcare_expenses():
@@ -1633,5 +1769,231 @@ def test_export_preserves_imported_workbook_column_widths(tmp_path):
         assert updated_workbook["Household"].column_dimensions["A"].width == 32
         assert updated_workbook["Household"].column_dimensions["B"].width == 48
     finally:
-        updated_path.unlink(missing_ok=True)
-        source_path.unlink(missing_ok=True)
+        updated_workbook.close()
+
+
+def test_export_keeps_existing_accounts_sheet_and_inserts_new_forecast_tabs_first(
+    tmp_path,
+    monkeypatch,
+):
+    plan = sample_plan()
+    source_path = tmp_path / "source.xlsx"
+    export_case_workbook(source_path, plan)
+
+    from openpyxl import load_workbook
+
+    source_workbook = load_workbook(source_path)
+    source_workbook["Accounts"]["B2"] = "User Edited IRA"
+    source_workbook.create_sheet("Forecast-Amts-21-Oct-26-235959")
+    source_workbook.create_sheet("Forecast-Accts-21-Oct-26-235959")
+    source_workbook.save(source_path)
+
+    monkeypatch.setattr(
+        workbook_io,
+        "_forecast_timestamp_label",
+        lambda: "22-Oct-26-114533",
+    )
+
+    forecast = generate_forecast(
+        plan,
+        ProjectionSettings(start_year=plan.base_year, number_of_years=1),
+    )
+
+    updated_path = tmp_path / "forecast_out.xlsx"
+    export_case_workbook(
+        updated_path,
+        plan,
+        forecast=forecast,
+        template_path=source_path,
+    )
+
+    updated_workbook = load_workbook(updated_path)
+
+    try:
+        assert updated_workbook["Accounts"]["B2"].value == "User Edited IRA"
+        assert "Forecast-Sumry-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-Amts-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-Accts-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-Amts-21-Oct-26-235959" in updated_workbook.sheetnames
+        assert "Forecast-Accts-21-Oct-26-235959" in updated_workbook.sheetnames
+        assert (
+            updated_workbook.sheetnames.index("Forecast-Sumry-22-Oct-26-114533")
+            < updated_workbook.sheetnames.index("Forecast-Amts-21-Oct-26-235959")
+        )
+        assert (
+            updated_workbook.sheetnames.index("Forecast-Amts-22-Oct-26-114533")
+            < updated_workbook.sheetnames.index("Forecast-Amts-21-Oct-26-235959")
+        )
+        assert (
+            updated_workbook.sheetnames.index("Forecast-Accts-22-Oct-26-114533")
+            < updated_workbook.sheetnames.index("Forecast-Accts-21-Oct-26-235959")
+        )
+        assert (
+            updated_workbook.sheetnames.index("Forecast-Amts-22-Oct-26-114533")
+            > updated_workbook.sheetnames.index("Actual Balances")
+        )
+        amounts_sheet = updated_workbook["Forecast-Amts-22-Oct-26-114533"]
+        assert amounts_sheet["A2"].value == forecast.rows[0].year
+        assert amounts_sheet["A2"].number_format == workbook_io.YEAR_NUMBER_FORMAT
+        assert amounts_sheet["B2"].value == workbook_io._round_amount_for_export(
+            forecast.rows[0].explicit_income_total
+        )
+        assert amounts_sheet["B2"].number_format == workbook_io.CURRENCY_NUMBER_FORMAT
+        accounts_sheet = updated_workbook["Forecast-Accts-22-Oct-26-114533"]
+        assert accounts_sheet["A2"].value == forecast.account_rows[0].year
+        assert accounts_sheet["A2"].number_format == workbook_io.YEAR_NUMBER_FORMAT
+        assert accounts_sheet["E2"].value == forecast.account_rows[0].effective_annual_return_rate
+        assert accounts_sheet["E2"].number_format == workbook_io.PERCENT_NUMBER_FORMAT
+        assert accounts_sheet["F2"].value == workbook_io._round_amount_for_export(
+            forecast.account_rows[0].start_balance
+        )
+        assert accounts_sheet["F2"].number_format == workbook_io.CURRENCY_NUMBER_FORMAT
+    finally:
+        updated_workbook.close()
+
+
+def test_export_adds_timestamped_monte_carlo_sheet(tmp_path, monkeypatch):
+    plan = sample_plan()
+    plan.settings.return_model_type = ReturnModelType.MONTE_CARLO
+    plan.settings.monte_carlo_simulations = 5
+    plan.settings.monte_carlo_seed = 7
+
+    source_path = tmp_path / "source_mc.xlsx"
+    export_case_workbook(source_path, sample_plan())
+
+    monkeypatch.setattr(
+        workbook_io,
+        "_forecast_timestamp_label",
+        lambda: "22-Oct-26-114533",
+    )
+
+    forecast = generate_forecast(
+        plan,
+        ProjectionSettings(start_year=plan.base_year, number_of_years=1),
+    )
+
+    updated_path = tmp_path / "forecast_mc_out.xlsx"
+    export_case_workbook(
+        updated_path,
+        plan,
+        forecast=forecast,
+        template_path=source_path,
+    )
+
+    from openpyxl import load_workbook
+
+    updated_workbook = load_workbook(updated_path)
+
+    try:
+        assert "Forecast-Sumry-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-Amts-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-Accts-22-Oct-26-114533" in updated_workbook.sheetnames
+        assert "Forecast-MC-22-Oct-26-114533" in updated_workbook.sheetnames
+    finally:
+        updated_workbook.close()
+
+
+def test_export_adds_headline_summary_lines_to_forecast_summary_sheet(tmp_path, monkeypatch):
+    plan = sample_plan("3-Bucket Sample")
+    source_path = tmp_path / "source_summary.xlsx"
+    export_case_workbook(source_path, plan)
+
+    monkeypatch.setattr(
+        workbook_io,
+        "_forecast_timestamp_label",
+        lambda: "22-Oct-26-114533",
+    )
+
+    forecast = generate_forecast(
+        plan,
+        ProjectionSettings(start_year=plan.base_year, number_of_years=5),
+    )
+
+    updated_path = tmp_path / "forecast_summary_out.xlsx"
+    export_case_workbook(
+        updated_path,
+        plan,
+        forecast=forecast,
+        template_path=source_path,
+    )
+
+    from openpyxl import load_workbook
+
+    updated_workbook = load_workbook(updated_path)
+
+    try:
+        sheet = updated_workbook["Forecast-Sumry-22-Oct-26-114533"]
+        headline_lines = workbook_io._build_headline_summary_blob(plan, forecast).splitlines()
+        warning_lines = workbook_io._build_warnings_blob(plan, forecast).splitlines()
+        preview_headers, preview_rows = workbook_io._build_next_five_years_preview(plan, forecast)
+        action_headers, action_rows = workbook_io._build_recommended_actions(plan, forecast)
+        assumptions_lines = workbook_io._build_key_assumptions_blob(plan).splitlines()
+        metadata_lines = workbook_io._build_run_metadata_blob(
+            plan=plan,
+            forecast=forecast,
+            generated_on="22-Oct-26-114533",
+            source_workbook_name=source_path.name,
+        ).splitlines()
+        warning_start_row = len(headline_lines) + 2
+        preview_start_row = warning_start_row + len(warning_lines) + 1
+        actions_start_row = preview_start_row + len(preview_rows) + 2
+        assumptions_start_row = actions_start_row + len(action_rows) + 2
+        metadata_start_row = assumptions_start_row + len(assumptions_lines) + 1
+        assert sheet.freeze_panes is None
+        assert sheet["A1"].value == "Forecast Headline Summary"
+        assert sheet["A1"].alignment.wrap_text is True
+        assert sheet["A1"].font.bold is True
+        assert sheet.column_dimensions["A"].width == 32
+        assert sheet["B1"].value is not None
+        assert sheet["B1"].value.startswith("Starting Assets:")
+        assert sheet["B2"].value is not None
+        assert sheet["B2"].value.startswith("Projected Ending Assets:")
+        assert sheet["B3"].value is not None
+        assert sheet["B3"].value.startswith("Assets Last Through Final Year:")
+        assert sheet.cell(warning_start_row - 1, 1).value is None
+        assert sheet.cell(warning_start_row - 1, 2).value is None
+        assert sheet.cell(warning_start_row, 1).value == "Key Warnings / Observations"
+        assert sheet.cell(warning_start_row, 1).alignment.wrap_text is True
+        assert sheet.cell(warning_start_row, 1).font.bold is True
+        assert warning_lines
+        assert sheet.cell(warning_start_row, 2).value == warning_lines[0]
+        assert sheet.cell(preview_start_row, 1).value == "Next 5 Years Preview"
+        assert sheet.cell(preview_start_row, 1).font.bold is True
+        assert [
+            sheet.cell(preview_start_row, column_index).value
+            for column_index in range(2, 2 + len(preview_headers))
+        ] == preview_headers
+        assert all(
+            sheet.cell(preview_start_row, column_index).font.bold is True
+            for column_index in range(2, 2 + len(preview_headers))
+        )
+        assert preview_rows
+        assert sheet.cell(preview_start_row + 1, 2).value == preview_rows[0][0]
+        assert sheet.cell(preview_start_row + 1, 3).value == preview_rows[0][1]
+        assert sheet.cell(preview_start_row + 1, 10).value == preview_rows[0][8]
+        assert sheet.cell(preview_start_row + 1, 11).value == preview_rows[0][9]
+        assert isinstance(sheet.cell(preview_start_row + 1, 3).value, int)
+        assert sheet.cell(preview_start_row + 1, 2).number_format == workbook_io.YEAR_NUMBER_FORMAT
+        assert sheet.cell(preview_start_row + 1, 3).number_format == workbook_io.CURRENCY_NUMBER_FORMAT
+        assert sheet.cell(preview_start_row + 1, 11).number_format == workbook_io.CURRENCY_NUMBER_FORMAT
+        assert sheet.cell(actions_start_row, 1).value == "Recommended Actions"
+        assert sheet.cell(actions_start_row, 1).font.bold is True
+        assert [
+            sheet.cell(actions_start_row, column_index).value
+            for column_index in range(2, 2 + len(action_headers))
+        ] == action_headers
+        assert action_rows
+        assert sheet.cell(actions_start_row + 1, 2).value == action_rows[0][0]
+        assert sheet.cell(actions_start_row + 1, 3).value == action_rows[0][1]
+        assert sheet.cell(actions_start_row + 1, 4).value == action_rows[0][2]
+        assert sheet.cell(assumptions_start_row, 1).value == "Key Assumptions"
+        assert sheet.cell(assumptions_start_row, 1).font.bold is True
+        assert assumptions_lines
+        assert sheet.cell(assumptions_start_row, 2).value == assumptions_lines[0]
+        assert sheet.cell(metadata_start_row, 1).value == "Run Metadata"
+        assert sheet.cell(metadata_start_row, 1).font.bold is True
+        assert metadata_lines
+        assert sheet.cell(metadata_start_row, 2).value == metadata_lines[0]
+        assert len(sheet._charts) == 0
+    finally:
+        updated_workbook.close()

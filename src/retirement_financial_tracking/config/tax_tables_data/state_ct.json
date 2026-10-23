@@ -1,0 +1,76 @@
+{
+  "base_year": 2024,
+  "tax_year_label": "2024 baseline",
+  "standard_deduction": {},
+  "income_based_exemption": {
+    "single": [
+      {"up_to": 15000, "amount": 15000},
+      {"up_to": 30000, "amount": 12000},
+      {"up_to": 50000, "amount": 9000},
+      {"up_to": 100000, "amount": 6000},
+      {"up_to": null, "amount": 0}
+    ],
+    "married_filing_jointly": [
+      {"up_to": 24000, "amount": 24000},
+      {"up_to": 48000, "amount": 19000},
+      {"up_to": 72000, "amount": 15000},
+      {"up_to": 100000, "amount": 12000},
+      {"up_to": 200000, "amount": 0},
+      {"up_to": null, "amount": 0}
+    ],
+    "married_filing_separately": [
+      {"up_to": 12000, "amount": 12000},
+      {"up_to": 24000, "amount": 9500},
+      {"up_to": 36000, "amount": 7500},
+      {"up_to": 50000, "amount": 6000},
+      {"up_to": 100000, "amount": 0},
+      {"up_to": null, "amount": 0}
+    ],
+    "head_of_household": [
+      {"up_to": 19000, "amount": 19000},
+      {"up_to": 38000, "amount": 16000},
+      {"up_to": 56000, "amount": 12000},
+      {"up_to": 100000, "amount": 8000},
+      {"up_to": 160000, "amount": 0},
+      {"up_to": null, "amount": 0}
+    ]
+  },
+  "ordinary_income_brackets": {
+    "single": [
+      {"up_to": 10000, "rate": 0.02},
+      {"up_to": 50000, "rate": 0.04},
+      {"up_to": 100000, "rate": 0.055},
+      {"up_to": 200000, "rate": 0.06},
+      {"up_to": 250000, "rate": 0.065},
+      {"up_to": 500000, "rate": 0.069},
+      {"up_to": null, "rate": 0.0699}
+    ],
+    "married_filing_jointly": [
+      {"up_to": 20000, "rate": 0.02},
+      {"up_to": 100000, "rate": 0.04},
+      {"up_to": 200000, "rate": 0.055},
+      {"up_to": 400000, "rate": 0.06},
+      {"up_to": 500000, "rate": 0.065},
+      {"up_to": 1000000, "rate": 0.069},
+      {"up_to": null, "rate": 0.0699}
+    ],
+    "married_filing_separately": [
+      {"up_to": 10000, "rate": 0.02},
+      {"up_to": 50000, "rate": 0.04},
+      {"up_to": 100000, "rate": 0.055},
+      {"up_to": 200000, "rate": 0.06},
+      {"up_to": 250000, "rate": 0.065},
+      {"up_to": 500000, "rate": 0.069},
+      {"up_to": null, "rate": 0.0699}
+    ],
+    "head_of_household": [
+      {"up_to": 16000, "rate": 0.02},
+      {"up_to": 80000, "rate": 0.04},
+      {"up_to": 160000, "rate": 0.055},
+      {"up_to": 320000, "rate": 0.06},
+      {"up_to": 400000, "rate": 0.065},
+      {"up_to": 800000, "rate": 0.069},
+      {"up_to": null, "rate": 0.0699}
+    ]
+  }
+}

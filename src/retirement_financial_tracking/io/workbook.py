@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from collections import defaultdict
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.chart import Reference, ScatterChart, Series
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 
+from retirement_financial_tracking.config import load_recommended_actions_config
 from retirement_financial_tracking.domain.models import (
     Account,
     AccountOwner,
@@ -15,6 +21,7 @@ from retirement_financial_tracking.domain.models import (
     CashFlowCategory,
     FilingStatus,
     ForecastResult,
+    HouseholdForecastRow,
     HouseholdPlan,
     HouseholdSettings,
     Holding,
@@ -24,12 +31,20 @@ from retirement_financial_tracking.domain.models import (
     RothHandlingPolicy,
     ReturnModelType,
     ReturnScenarioType,
+    TaxModelType,
+    TaxProjectionMode,
     TaxTreatment,
     WithdrawalAccountTypePriority,
     WithdrawalAllocationMethod,
     WithdrawalOwnerPriority,
     WithdrawalTaxPriority,
+    sum_money,
 )
+
+
+YEAR_NUMBER_FORMAT = "0"
+CURRENCY_NUMBER_FORMAT = "$#,##0"
+PERCENT_NUMBER_FORMAT = "0.00%"
 
 
 def export_case_workbook(
@@ -42,19 +57,57 @@ def export_case_workbook(
     _write_household_sheet(workbook, plan)
     _write_people_sheet(workbook, plan)
     _write_buckets_sheet(workbook, plan)
-    _write_accounts_sheet(workbook, plan)
+    if "Accounts" not in workbook.sheetnames:
+        _write_accounts_sheet(workbook, plan)
     _write_holdings_sheet(workbook, plan)
     _write_cash_flows_sheet(workbook, plan)
     _write_actual_balances_sheet(workbook, plan)
     if forecast is not None:
-        _write_forecast_sheet(workbook, forecast)
-        _write_account_forecast_sheet(workbook, forecast)
+        timestamp_label = _forecast_timestamp_label()
+        insertion_index = _forecast_insertion_index(workbook)
+        _write_forecast_summary_sheet(
+            workbook,
+            plan,
+            forecast,
+            sheet_title=_next_available_output_title(
+                workbook,
+                f"Forecast-Sumry-{timestamp_label}",
+            ),
+            index=insertion_index,
+            generated_on=timestamp_label,
+            source_workbook_name=Path(template_path).name if template_path else "",
+        )
+        insertion_index += 1
+        _write_forecast_sheet(
+            workbook,
+            forecast,
+            sheet_title=_next_available_output_title(
+                workbook,
+                f"Forecast-Amts-{timestamp_label}",
+            ),
+            index=insertion_index,
+        )
+        insertion_index += 1
+        _write_account_forecast_sheet(
+            workbook,
+            forecast,
+            sheet_title=_next_available_output_title(
+                workbook,
+                f"Forecast-Accts-{timestamp_label}",
+            ),
+            index=insertion_index,
+        )
+        insertion_index += 1
         if forecast.return_model_type is ReturnModelType.MONTE_CARLO:
-            _write_monte_carlo_summary_sheet(workbook, forecast)
-        elif "Monte Carlo Summary" in workbook.sheetnames:
-            del workbook["Monte Carlo Summary"]
-    elif "Monte Carlo Summary" in workbook.sheetnames:
-        del workbook["Monte Carlo Summary"]
+            _write_monte_carlo_summary_sheet(
+                workbook,
+                forecast,
+                sheet_title=_next_available_output_title(
+                    workbook,
+                    f"Forecast-MC-{timestamp_label}",
+                ),
+                index=insertion_index,
+            )
     destination = Path(path)
     workbook.save(destination)
     return destination
@@ -83,6 +136,15 @@ def import_case_workbook(path: str | Path) -> HouseholdPlan:
         state=str(household_data.get("state") or "CT"),
         filing_status=FilingStatus(
             str(household_data.get("filing_status") or FilingStatus.MARRIED_FILING_JOINTLY.value)
+        ),
+        tax_model=TaxModelType(
+            str(household_data.get("tax_model") or TaxModelType.EFFECTIVE_RATE.value)
+        ),
+        tax_projection_mode=TaxProjectionMode(
+            str(
+                household_data.get("tax_projection_mode")
+                or TaxProjectionMode.STATIC.value
+            )
         ),
         projection_years=int(household_data.get("projection_years") or 30),
         inflation_rate=float(household_data.get("inflation_rate") or 0.03),
@@ -297,6 +359,8 @@ def _write_household_sheet(workbook: Workbook, plan: HouseholdPlan) -> None:
     sheet.append(["base_year", plan.base_year])
     sheet.append(["state", plan.settings.state])
     sheet.append(["filing_status", plan.settings.filing_status.value])
+    sheet.append(["tax_model", plan.settings.tax_model.value])
+    sheet.append(["tax_projection_mode", plan.settings.tax_projection_mode.value])
     sheet.append(["projection_years", plan.settings.projection_years])
     sheet.append(["inflation_rate", plan.settings.inflation_rate])
     sheet.append(["default_bucket_expense_years", plan.settings.default_bucket_expense_years])
@@ -534,121 +598,222 @@ def _write_actual_balances_sheet(workbook: Workbook, plan: HouseholdPlan) -> Non
         )
 
 
-def _write_forecast_sheet(workbook: Workbook, forecast: ForecastResult) -> None:
-    sheet = _get_or_create_sheet(workbook, "Forecast")
-    _clear_sheet(sheet)
-    sheet.append(
-        [
-            "year",
-            "explicit_income_total",
-            "social_security_total",
-            "pension_total",
-            "income_total",
-            "living_expense_total",
-            "healthcare_total",
-            "hsa_contribution_total",
-            "explicit_expense_total",
-            "expense_total",
-            "explicit_tax_total",
-            "derived_tax_total",
-            "tax_total",
-            "contribution_total",
-            "hsa_healthcare_withdrawal_total",
-            "explicit_withdrawal_total",
-            "rmd_withdrawal_total",
-            "auto_funding_withdrawal_total",
-            "withdrawal_total",
-            "short_term_ending_assets",
-            "intermediate_ending_assets",
-            "long_term_ending_assets",
-            "net_cash_flow",
-            "total_starting_assets",
-            "total_ending_assets",
-        ]
-    )
+def _write_forecast_sheet(
+    workbook: Workbook,
+    forecast: ForecastResult,
+    *,
+    sheet_title: str,
+    index: int,
+) -> None:
+    sheet = workbook.create_sheet(sheet_title, index=index)
+    headers = [
+        "year",
+        "explicit_income_total",
+        "social_security_total",
+        "pension_total",
+        "income_total",
+        "living_expense_total",
+        "healthcare_total",
+        "hsa_contribution_total",
+        "explicit_expense_total",
+        "expense_total",
+        "explicit_tax_total",
+        "derived_tax_total",
+        "tax_total",
+        "contribution_total",
+        "hsa_healthcare_withdrawal_total",
+        "explicit_withdrawal_total",
+        "rmd_withdrawal_total",
+        "auto_funding_withdrawal_total",
+        "withdrawal_total",
+        "short_term_ending_assets",
+        "intermediate_ending_assets",
+        "long_term_ending_assets",
+        "net_cash_flow",
+        "total_starting_assets",
+        "total_ending_assets",
+    ]
+    sheet.append(headers)
     for row in forecast.rows:
-        sheet.append(
+        _append_formatted_row(
+            sheet,
             [
                 row.year,
-                float(row.explicit_income_total),
-                float(row.social_security_total),
-                float(row.pension_total),
-                float(row.income_total),
-                float(row.living_expense_total),
-                float(row.healthcare_total),
-                float(row.hsa_contribution_total),
-                float(row.explicit_expense_total),
-                float(row.expense_total),
-                float(row.explicit_tax_total),
-                float(row.derived_tax_total),
-                float(row.tax_total),
-                float(row.contribution_total),
-                float(row.hsa_healthcare_withdrawal_total),
-                float(row.explicit_withdrawal_total),
-                float(row.rmd_withdrawal_total),
-                float(row.auto_funding_withdrawal_total),
-                float(row.withdrawal_total),
-                float(row.short_term_ending_assets),
-                float(row.intermediate_ending_assets),
-                float(row.long_term_ending_assets),
-                float(row.net_cash_flow),
-                float(row.total_starting_assets),
-                float(row.total_ending_assets),
-            ]
+                _round_amount_for_export(row.explicit_income_total),
+                _round_amount_for_export(row.social_security_total),
+                _round_amount_for_export(row.pension_total),
+                _round_amount_for_export(row.income_total),
+                _round_amount_for_export(row.living_expense_total),
+                _round_amount_for_export(row.healthcare_total),
+                _round_amount_for_export(row.hsa_contribution_total),
+                _round_amount_for_export(row.explicit_expense_total),
+                _round_amount_for_export(row.expense_total),
+                _round_amount_for_export(row.explicit_tax_total),
+                _round_amount_for_export(row.derived_tax_total),
+                _round_amount_for_export(row.tax_total),
+                _round_amount_for_export(row.contribution_total),
+                _round_amount_for_export(row.hsa_healthcare_withdrawal_total),
+                _round_amount_for_export(row.explicit_withdrawal_total),
+                _round_amount_for_export(row.rmd_withdrawal_total),
+                _round_amount_for_export(row.auto_funding_withdrawal_total),
+                _round_amount_for_export(row.withdrawal_total),
+                _round_amount_for_export(row.short_term_ending_assets),
+                _round_amount_for_export(row.intermediate_ending_assets),
+                _round_amount_for_export(row.long_term_ending_assets),
+                _round_amount_for_export(row.net_cash_flow),
+                _round_amount_for_export(row.total_starting_assets),
+                _round_amount_for_export(row.total_ending_assets),
+            ],
+            {
+                1: YEAR_NUMBER_FORMAT,
+                **{column_index: CURRENCY_NUMBER_FORMAT for column_index in range(2, len(headers) + 1)},
+            },
         )
 
 
-def _write_account_forecast_sheet(workbook: Workbook, forecast: ForecastResult) -> None:
-    sheet = _get_or_create_sheet(workbook, "Account Forecast")
-    _clear_sheet(sheet)
-    sheet.append(
-        [
-            "year",
-            "account_id",
-            "account_name",
-            "bucket_type",
-            "effective_annual_return_rate",
-            "start_balance",
-            "contributions",
-            "explicit_withdrawals",
-            "rmd_withdrawals",
-            "hsa_healthcare_withdrawals",
-            "auto_funding_withdrawals",
-            "replenishment_inflows",
-            "replenishment_outflows",
-            "withdrawals",
-            "investment_growth",
-            "end_balance",
-        ]
-    )
+def _write_forecast_summary_sheet(
+    workbook: Workbook,
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+    *,
+    sheet_title: str,
+    index: int,
+    generated_on: str,
+    source_workbook_name: str,
+) -> None:
+    sheet = workbook.create_sheet(sheet_title, index=index)
+    label_alignment = Alignment(wrap_text=True, vertical="top")
+    label_font = Font(bold=True)
+    sheet.column_dimensions["A"].width = 32
+    headline_lines = _build_headline_summary_blob(plan, forecast).splitlines()
+    warning_lines = _build_warnings_blob(plan, forecast).splitlines()
+    preview_headers, preview_rows = _build_next_five_years_preview(plan, forecast)
+    action_headers, action_rows = _build_recommended_actions(plan, forecast)
+    assumptions_lines = _build_key_assumptions_blob(plan).splitlines()
+    metadata_lines = _build_run_metadata_blob(
+        plan=plan,
+        forecast=forecast,
+        generated_on=generated_on,
+        source_workbook_name=source_workbook_name,
+    ).splitlines()
+
+    sheet["A1"] = "Forecast Headline Summary"
+    sheet["A1"].alignment = label_alignment
+    sheet["A1"].font = label_font
+    for row_index, line in enumerate(headline_lines, start=1):
+        sheet.cell(row_index, 2, line)
+
+    warning_start_row = len(headline_lines) + 2
+    sheet.cell(warning_start_row, 1, "Key Warnings / Observations")
+    sheet.cell(warning_start_row, 1).alignment = label_alignment
+    sheet.cell(warning_start_row, 1).font = label_font
+    for row_index, line in enumerate(warning_lines, start=warning_start_row):
+        sheet.cell(row_index, 2, line)
+
+    preview_start_row = warning_start_row + len(warning_lines) + 1
+    sheet.cell(preview_start_row, 1, "Next 5 Years Preview")
+    sheet.cell(preview_start_row, 1).alignment = label_alignment
+    sheet.cell(preview_start_row, 1).font = label_font
+    for column_index, header in enumerate(preview_headers, start=2):
+        sheet.cell(preview_start_row, column_index, header).font = label_font
+    for row_offset, preview_row in enumerate(preview_rows, start=1):
+        for column_index, value in enumerate(preview_row, start=2):
+            cell = sheet.cell(preview_start_row + row_offset, column_index, value)
+            cell.number_format = (
+                YEAR_NUMBER_FORMAT if column_index == 2 else CURRENCY_NUMBER_FORMAT
+            )
+
+    actions_start_row = preview_start_row + len(preview_rows) + 2
+    sheet.cell(actions_start_row, 1, "Recommended Actions")
+    sheet.cell(actions_start_row, 1).alignment = label_alignment
+    sheet.cell(actions_start_row, 1).font = label_font
+    for column_index, header in enumerate(action_headers, start=2):
+        sheet.cell(actions_start_row, column_index, header).font = label_font
+    for row_offset, action_row in enumerate(action_rows, start=1):
+        for column_index, value in enumerate(action_row, start=2):
+            sheet.cell(actions_start_row + row_offset, column_index, value)
+
+    assumptions_start_row = actions_start_row + len(action_rows) + 2
+    sheet.cell(assumptions_start_row, 1, "Key Assumptions")
+    sheet.cell(assumptions_start_row, 1).alignment = label_alignment
+    sheet.cell(assumptions_start_row, 1).font = label_font
+    for row_index, line in enumerate(assumptions_lines, start=assumptions_start_row):
+        sheet.cell(row_index, 2, line)
+
+    metadata_start_row = assumptions_start_row + len(assumptions_lines) + 1
+    sheet.cell(metadata_start_row, 1, "Run Metadata")
+    sheet.cell(metadata_start_row, 1).alignment = label_alignment
+    sheet.cell(metadata_start_row, 1).font = label_font
+    for row_index, line in enumerate(metadata_lines, start=metadata_start_row):
+        sheet.cell(row_index, 2, line)
+
+
+def _write_account_forecast_sheet(
+    workbook: Workbook,
+    forecast: ForecastResult,
+    *,
+    sheet_title: str,
+    index: int,
+) -> None:
+    sheet = workbook.create_sheet(sheet_title, index=index)
+    headers = [
+        "year",
+        "account_id",
+        "account_name",
+        "bucket_type",
+        "effective_annual_return_rate",
+        "start_balance",
+        "contributions",
+        "explicit_withdrawals",
+        "rmd_withdrawals",
+        "hsa_healthcare_withdrawals",
+        "auto_funding_withdrawals",
+        "replenishment_inflows",
+        "replenishment_outflows",
+        "withdrawals",
+        "investment_growth",
+        "end_balance",
+    ]
+    sheet.append(headers)
     for row in forecast.account_rows:
-        sheet.append(
+        _append_formatted_row(
+            sheet,
             [
                 row.year,
                 row.account_id,
                 row.account_name,
                 row.bucket_type.value,
                 row.effective_annual_return_rate,
-                float(row.start_balance),
-                float(row.contributions),
-                float(row.explicit_withdrawals),
-                float(row.rmd_withdrawals),
-                float(row.hsa_healthcare_withdrawals),
-                float(row.auto_funding_withdrawals),
-                float(row.replenishment_inflows),
-                float(row.replenishment_outflows),
-                float(row.withdrawals),
-                float(row.investment_growth),
-                float(row.end_balance),
-            ]
+                _round_amount_for_export(row.start_balance),
+                _round_amount_for_export(row.contributions),
+                _round_amount_for_export(row.explicit_withdrawals),
+                _round_amount_for_export(row.rmd_withdrawals),
+                _round_amount_for_export(row.hsa_healthcare_withdrawals),
+                _round_amount_for_export(row.auto_funding_withdrawals),
+                _round_amount_for_export(row.replenishment_inflows),
+                _round_amount_for_export(row.replenishment_outflows),
+                _round_amount_for_export(row.withdrawals),
+                _round_amount_for_export(row.investment_growth),
+                _round_amount_for_export(row.end_balance),
+            ],
+            {
+                1: YEAR_NUMBER_FORMAT,
+                5: PERCENT_NUMBER_FORMAT,
+                **{column_index: CURRENCY_NUMBER_FORMAT for column_index in range(6, len(headers) + 1)},
+            },
         )
 
 
-def _write_monte_carlo_summary_sheet(workbook: Workbook, forecast: ForecastResult) -> None:
+def _write_monte_carlo_summary_sheet(
+    workbook: Workbook,
+    forecast: ForecastResult,
+    *,
+    sheet_title: str,
+    index: int,
+) -> None:
     if forecast.return_model_type is not ReturnModelType.MONTE_CARLO:
         return
-    sheet = _get_or_create_sheet(workbook, "Monte Carlo Summary")
-    _clear_sheet(sheet)
+    sheet = workbook.create_sheet(sheet_title, index=index)
     sheet.append(["field", "value"])
     sheet.append(["return_model_type", forecast.return_model_type.value])
     sheet.append(["monte_carlo_simulations", forecast.monte_carlo_simulations])
@@ -663,6 +828,49 @@ def _write_monte_carlo_summary_sheet(workbook: Workbook, forecast: ForecastResul
 
 def _read_key_value_sheet(sheet) -> dict[str, object]:
     return {str(row[0].value): row[1].value for row in sheet.iter_rows(min_row=2, max_col=2)}
+
+
+def _forecast_timestamp_label() -> str:
+    return datetime.now().strftime("%d-%b-%y-%H%M%S")
+
+
+def _forecast_insertion_index(workbook: Workbook) -> int:
+    output_indexes = [
+        index
+        for index, title in enumerate(workbook.sheetnames)
+        if _is_forecast_output_sheet(title)
+    ]
+    if output_indexes:
+        return min(output_indexes)
+    if "Actual Balances" in workbook.sheetnames:
+        return workbook.sheetnames.index("Actual Balances") + 1
+    return len(workbook.sheetnames)
+
+
+def _is_forecast_output_sheet(title: str) -> bool:
+    return (
+        title == "Forecast"
+        or title == "Account Forecast"
+        or title == "Monte Carlo Summary"
+        or title.startswith("Forecast-Summary")
+        or title.startswith("Forecast-Sumry-")
+        or title.startswith("Forecast-Amts-")
+        or title.startswith("Forecast-Accts-")
+        or title.startswith("Forecast-MC-")
+    )
+
+
+def _next_available_output_title(workbook: Workbook, base_title: str) -> str:
+    base_title = base_title[:31]
+    if base_title not in workbook.sheetnames:
+        return base_title
+    counter = 2
+    while True:
+        suffix = f"-{counter}"
+        candidate = f"{base_title[:31 - len(suffix)]}{suffix}"
+        if candidate not in workbook.sheetnames:
+            return candidate
+        counter += 1
 
 
 def _read_table_rows(sheet) -> list[dict[str, object]]:
@@ -729,3 +937,478 @@ def _to_bool(value: object, default: bool = False) -> bool:
         return value
     text = str(value).strip().lower()
     return text in {"1", "true", "yes", "y"}
+
+
+def _write_summary_chart(sheet, forecast: ForecastResult) -> None:
+    start_col = 6  # F
+    start_row = 1
+    headers = [
+        "Year",
+        "Income",
+        "Withdrawal",
+        "Expenses",
+        "Taxes",
+        "RMD",
+        "End Assets",
+        "Short-term",
+    ]
+    for offset, header in enumerate(headers):
+        column = start_col + offset
+        sheet.cell(start_row, column, header)
+        sheet.column_dimensions[get_column_letter(column)].hidden = True
+
+    for row_index, row in enumerate(forecast.rows, start=start_row + 1):
+        values = [
+            row.year,
+            float(row.income_total),
+            float(row.withdrawal_total),
+            float(row.expense_total),
+            float(row.tax_total),
+            float(row.rmd_withdrawal_total),
+            float(row.total_ending_assets),
+            float(row.short_term_ending_assets),
+        ]
+        for offset, value in enumerate(values):
+            sheet.cell(row_index, start_col + offset, value)
+
+    if not forecast.rows:
+        return
+
+    chart = ScatterChart()
+    chart.title = "Forecast Trend"
+    chart.x_axis.title = "Year"
+    chart.y_axis.title = "$"
+    chart.x_axis.axPos = "b"
+    chart.y_axis.axPos = "l"
+    chart.x_axis.tickLblPos = "nextTo"
+    chart.y_axis.tickLblPos = "nextTo"
+    chart.x_axis.number_format = "0"
+    chart.y_axis.number_format = "$#,##0"
+    chart.height = 11
+    chart.width = 20
+    chart.style = 2
+    chart.visible_cells_only = False
+    chart.scatterStyle = "line"
+    xvalues = Reference(
+        sheet,
+        min_col=start_col,
+        max_col=start_col,
+        min_row=start_row + 1,
+        max_row=start_row + len(forecast.rows),
+    )
+    for series_col in range(start_col + 1, start_col + len(headers)):
+        values = Reference(
+            sheet,
+            min_col=series_col,
+            max_col=series_col,
+            min_row=start_row + 1,
+            max_row=start_row + len(forecast.rows),
+        )
+        title = Reference(
+            sheet,
+            min_col=series_col,
+            max_col=series_col,
+            min_row=start_row,
+            max_row=start_row,
+        )
+        series = Series(values, xvalues, title_from_data=False, title=title)
+        series.marker.symbol = "none"
+        chart.series.append(series)
+    sheet.add_chart(chart, "A3")
+
+
+def _write_summary_blob(
+    sheet,
+    *,
+    row: int,
+    label: str,
+    text: str,
+    label_column: int,
+    text_column: int,
+    label_font: Font,
+    wrapped_alignment: Alignment,
+) -> None:
+    sheet.cell(row, label_column, label).font = label_font
+    sheet.cell(row, label_column).alignment = wrapped_alignment
+    sheet.cell(row, text_column, text).alignment = wrapped_alignment
+    line_count = max(3, text.count("\n") + 1)
+    sheet.row_dimensions[row].height = max(42, line_count * 15)
+
+
+def _write_table(
+    sheet,
+    *,
+    start_row: int,
+    headers: list[str],
+    rows: list[list[object]],
+    header_font: Font,
+) -> None:
+    for index, header in enumerate(headers, start=1):
+        cell = sheet.cell(start_row, index, header)
+        cell.font = header_font
+        cell.alignment = Alignment(vertical="top")
+    for row_offset, values in enumerate(rows, start=1):
+        for column_index, value in enumerate(values, start=1):
+            cell = sheet.cell(start_row + row_offset, column_index, value)
+            cell.alignment = Alignment(vertical="top")
+
+
+def _build_run_metadata_blob(
+    *,
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+    generated_on: str,
+    source_workbook_name: str,
+) -> str:
+    lines = [
+        f"Generated On: {generated_on}",
+        f"Plan ID: {plan.plan_id}",
+        f"Household Name: {plan.household_name}",
+        f"Base Year: {plan.base_year}",
+        f"Projection Years: {len(forecast.rows)}",
+        f"Return Model: {plan.settings.return_model_type.value}",
+        f"Tax Model: {plan.settings.tax_model.value}",
+        f"Tax Projection Mode: {plan.settings.tax_projection_mode.value}",
+    ]
+    if source_workbook_name:
+        lines.append(f"Workbook Source: {source_workbook_name}")
+    return "\n".join(lines)
+
+
+def _build_key_assumptions_blob(plan: HouseholdPlan) -> str:
+    lines = [
+        f"Planned Annual Spending: {_format_money(plan.settings.planned_annual_spending)}",
+        f"Inflation Rate: {_format_percent(plan.settings.inflation_rate)}",
+        f"Federal Tax Handling: {plan.settings.tax_model.value}",
+        f"State: {plan.settings.state}",
+        f"RMD Start Age: {plan.settings.rmd_start_age}",
+        f"Auto Fund Shortfall: {_format_yes_no(plan.settings.auto_fund_shortfall)}",
+        f"Withdrawal Tax Priority: {plan.settings.withdrawal_tax_priority.value}",
+        f"Withdrawal Owner Priority: {plan.settings.withdrawal_owner_priority.value}",
+        f"Withdrawal Allocation Method: {plan.settings.withdrawal_allocation_method.value}",
+        f"Bucket Expense Years: {plan.settings.default_bucket_expense_years}",
+    ]
+    if plan.settings.return_model_type is ReturnModelType.SCENARIO_BASED:
+        lines.append(f"Return Scenario: {plan.settings.return_scenario_type.value}")
+    if plan.settings.return_model_type is ReturnModelType.MONTE_CARLO:
+        lines.append(
+            f"Monte Carlo Simulations: {plan.settings.monte_carlo_simulations:,}"
+        )
+        lines.append(
+            "Monte Carlo Seed: "
+            + (
+                str(plan.settings.monte_carlo_seed)
+                if plan.settings.monte_carlo_seed is not None
+                else "random"
+            )
+        )
+    return "\n".join(lines)
+
+
+def _build_headline_summary_blob(plan: HouseholdPlan, forecast: ForecastResult) -> str:
+    if not forecast.rows:
+        return "No forecast rows were generated."
+    first_row = forecast.rows[0]
+    final_row = forecast.rows[-1]
+    depletion_year = _forecast_depletion_year(forecast.rows)
+    lines = [
+        f"Starting Assets: {_format_money(first_row.total_starting_assets)}",
+        f"Projected Ending Assets: {_format_money(forecast.final_total_assets)}",
+        "Assets Last Through Final Year: "
+        + _format_yes_no(depletion_year is None),
+        f"Projection Horizon Ends: {final_row.year}",
+        "Projected Depletion Year: "
+        + (str(depletion_year) if depletion_year is not None else "None"),
+        f"Final Year Total Tax: {_format_money(final_row.tax_total)}",
+        f"Total Projected Withdrawals: {_format_money(sum_money(row.withdrawal_total for row in forecast.rows))}",
+        f"Total Projected RMD Withdrawals: {_format_money(sum_money(row.rmd_withdrawal_total for row in forecast.rows))}",
+        f"Total Projected HSA Contributions: {_format_money(sum_money(row.hsa_contribution_total for row in forecast.rows))}",
+        "Total Projected HSA Healthcare Withdrawals: "
+        + _format_money(sum_money(row.hsa_healthcare_withdrawal_total for row in forecast.rows)),
+    ]
+    if plan.settings.return_model_type is ReturnModelType.MONTE_CARLO:
+        lines.extend(
+            [
+                f"Monte Carlo Final Assets P10: {_format_money(forecast.final_total_assets_p10 or Decimal('0.00'))}",
+                f"Monte Carlo Final Assets Median: {_format_money(forecast.final_total_assets_median or forecast.final_total_assets)}",
+                f"Monte Carlo Final Assets P90: {_format_money(forecast.final_total_assets_p90 or Decimal('0.00'))}",
+            ]
+        )
+        target_year = plan.settings.monte_carlo_depletion_target_year
+        if target_year is not None:
+            lines.append(
+                "Probability of Depletion by Target Year: "
+                + _format_percent(
+                    _depletion_probability_by_year(
+                        forecast.monte_carlo_trial_depletion_years,
+                        target_year,
+                    )
+                )
+            )
+    return "\n".join(lines)
+
+
+def _build_warnings_blob(plan: HouseholdPlan, forecast: ForecastResult) -> str:
+    warnings: list[str] = []
+    depletion_year = _forecast_depletion_year(forecast.rows)
+    if depletion_year is None and forecast.rows:
+        warnings.append("Assets are projected to last through the full forecast horizon.")
+    elif depletion_year is not None:
+        warnings.append(f"Assets are projected to deplete in {depletion_year}.")
+
+    for bucket in plan.buckets:
+        shortfall_year = _bucket_shortfall_year(plan, forecast, bucket.bucket_id)
+        if shortfall_year is not None:
+            warnings.append(
+                f"{bucket.bucket_name} is projected below its target floor in {shortfall_year}."
+            )
+
+    first_rmd_year = next(
+        (row.year for row in forecast.rows if row.rmd_withdrawal_total > 0),
+        None,
+    )
+    if first_rmd_year is not None:
+        warnings.append(f"RMD withdrawals begin in {first_rmd_year} under the current assumptions.")
+
+    if forecast.rows and forecast.rows[-1].tax_total > forecast.rows[0].tax_total * Decimal("1.25"):
+        warnings.append("Projected taxes increase materially over the forecast horizon.")
+
+    if (
+        plan.settings.return_model_type is ReturnModelType.MONTE_CARLO
+        and forecast.final_total_assets_p10 is not None
+        and forecast.final_total_assets_median is not None
+        and forecast.final_total_assets_p10 < forecast.final_total_assets_median * Decimal("0.75")
+    ):
+        warnings.append("Monte Carlo downside shows a meaningfully weaker ending-asset buffer.")
+
+    warnings.append(
+        "Forecast results are planning estimates and depend on current assumptions, tax tables, and actual balance updates."
+    )
+    return "\n".join(f"- {warning}" for warning in warnings)
+
+
+def _build_next_five_years_preview(
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+) -> tuple[list[str], list[list[object]]]:
+    bucket_types_by_id = {bucket.bucket_id: bucket.bucket_type for bucket in plan.buckets}
+    balances_by_year = _bucket_balances_by_year(plan, forecast)
+    headers = [
+        "Year",
+        "Income",
+        "Withdrawals",
+        "Expenses",
+        "Taxes",
+        "RMD",
+        "Short-Term",
+        "Intermediate-Term",
+        "Long-Term",
+        "End Assets",
+    ]
+    rows: list[list[object]] = []
+    for row in forecast.rows[:5]:
+        bucket_balances = balances_by_year.get(row.year, {})
+        short_term_balance = Decimal("0.00")
+        intermediate_balance = Decimal("0.00")
+        long_term_balance = Decimal("0.00")
+        for bucket_id, balance in bucket_balances.items():
+            bucket_type = bucket_types_by_id.get(bucket_id)
+            if bucket_type is BucketType.SHORT_TERM:
+                short_term_balance += balance
+            elif bucket_type is BucketType.INTERMEDIATE:
+                intermediate_balance += balance
+            elif bucket_type is BucketType.LONG_TERM:
+                long_term_balance += balance
+        rows.append(
+            [
+                row.year,
+                _round_amount_for_preview(row.income_total),
+                _round_amount_for_preview(row.withdrawal_total),
+                _round_amount_for_preview(row.expense_total),
+                _round_amount_for_preview(row.tax_total),
+                _round_amount_for_preview(row.rmd_withdrawal_total),
+                _round_amount_for_preview(short_term_balance),
+                _round_amount_for_preview(intermediate_balance),
+                _round_amount_for_preview(long_term_balance),
+                _round_amount_for_preview(row.total_ending_assets),
+            ]
+        )
+    return headers, rows
+
+
+def _build_recommended_actions(
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+) -> tuple[list[str], list[list[object]]]:
+    config = load_recommended_actions_config()
+    headers = ["Timing", "Priority", "Action"]
+    actions: list[list[object]] = []
+
+    has_hsa = any(
+        account.account_type is AccountType.HSA or account.tax_treatment is TaxTreatment.HSA
+        for account in plan.accounts
+    ) or any(person.hsa_eligible for person in plan.people)
+
+    for action in config.recurring_actions:
+        if action.condition == "has_hsa" and not has_hsa:
+            continue
+        actions.append([action.timing, action.priority, action.action])
+
+    triggered_actions = config.triggered_actions
+
+    for bucket in plan.buckets:
+        shortfall_year = _bucket_shortfall_year(plan, forecast, bucket.bucket_id)
+        if shortfall_year is not None:
+            action = triggered_actions.get("bucket_shortfall")
+            if action is not None:
+                actions.append(
+                    [
+                        action.timing,
+                        action.priority,
+                        action.action_template.format(bucket_name=bucket.bucket_name),
+                    ]
+                )
+
+    for person in plan.people:
+        if person.retirement_year is None:
+            continue
+        start_year = forecast.rows[0].year if forecast.rows else plan.base_year
+        end_year = forecast.rows[-1].year if forecast.rows else start_year
+        if start_year <= person.retirement_year <= end_year:
+            action = triggered_actions.get("retirement_transition")
+            if action is not None:
+                actions.append(
+                    [
+                        action.timing,
+                        action.priority,
+                        action.action_template.format(person_name=person.display_name),
+                    ]
+                )
+
+    first_rmd_year = next(
+        (row.year for row in forecast.rows if row.rmd_withdrawal_total > 0),
+        None,
+    )
+    if first_rmd_year is not None:
+        action = triggered_actions.get("first_rmd")
+        if action is not None:
+            actions.append([action.timing, action.priority, action.action_template])
+
+    depletion_year = _forecast_depletion_year(forecast.rows)
+    if depletion_year is not None:
+        action = triggered_actions.get("depletion")
+        if action is not None:
+            actions.append([action.timing, action.priority, action.action_template])
+
+    if (
+        plan.settings.return_model_type is ReturnModelType.MONTE_CARLO
+        and forecast.final_total_assets_p10 is not None
+        and forecast.final_total_assets_median is not None
+        and forecast.final_total_assets_p10 < forecast.final_total_assets_median * Decimal("0.75")
+    ):
+        action = triggered_actions.get("monte_carlo_downside")
+        if action is not None:
+            actions.append([action.timing, action.priority, action.action_template])
+
+    return headers, actions
+
+
+def _bucket_balances_by_year(
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+) -> dict[int, dict[str, Decimal]]:
+    account_to_bucket = {account.account_id: account.bucket_id for account in plan.accounts}
+    balances: dict[int, dict[str, Decimal]] = defaultdict(lambda: defaultdict(lambda: Decimal("0.00")))
+    for row in forecast.account_rows:
+        bucket_id = account_to_bucket.get(row.account_id)
+        if not bucket_id:
+            continue
+        balances[row.year][bucket_id] += row.end_balance
+    return {
+        year: {bucket_id: amount for bucket_id, amount in bucket_balances.items()}
+        for year, bucket_balances in balances.items()
+    }
+
+
+def _bucket_target_floor(plan: HouseholdPlan, bucket: BucketDefinition) -> Decimal:
+    years = bucket.target_years
+    if years is None:
+        years = plan.settings.default_bucket_expense_years
+    expense_based_target = plan.settings.planned_annual_spending * Decimal(str(years))
+    return _quantize_money(max(bucket.target_amount, expense_based_target))
+
+
+def _bucket_shortfall_year(
+    plan: HouseholdPlan,
+    forecast: ForecastResult,
+    bucket_id: str,
+) -> int | None:
+    balances_by_year = _bucket_balances_by_year(plan, forecast)
+    bucket = next((item for item in plan.buckets if item.bucket_id == bucket_id), None)
+    if bucket is None:
+        return None
+    target_floor = _bucket_target_floor(plan, bucket)
+    if target_floor <= 0:
+        return None
+    for row in forecast.rows:
+        if balances_by_year.get(row.year, {}).get(bucket_id, Decimal("0.00")) < target_floor:
+            return row.year
+    return None
+
+
+def _forecast_depletion_year(rows: list[HouseholdForecastRow]) -> int | None:
+    for row in rows:
+        if row.total_ending_assets <= 0:
+            return row.year
+    return None
+
+
+def _depletion_probability_by_year(
+    depletion_years: list[int | None],
+    target_year: int,
+) -> float:
+    if not depletion_years:
+        return 0.0
+    depleted_count = sum(
+        1
+        for depletion_year in depletion_years
+        if depletion_year is not None and depletion_year <= target_year
+    )
+    return depleted_count / len(depletion_years)
+
+
+def _append_formatted_row(
+    sheet,
+    values: list[object],
+    number_formats_by_column: dict[int, str],
+) -> None:
+    row_index = sheet.max_row + 1
+    for column_index, value in enumerate(values, start=1):
+        cell = sheet.cell(row_index, column_index, value)
+        number_format = number_formats_by_column.get(column_index)
+        if number_format:
+            cell.number_format = number_format
+
+
+def _format_money(value: Decimal) -> str:
+    return f"${float(value):,.2f}"
+
+
+def _round_amount_for_export(value: Decimal) -> int:
+    return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _round_amount_for_preview(value: Decimal) -> int:
+    return _round_amount_for_export(value)
+
+
+def _format_percent(value: float) -> str:
+    return f"{value:.2%}"
+
+
+def _format_yes_no(value: bool) -> str:
+    return "Yes" if value else "No"
+
+
+def _quantize_money(value: Decimal | int | float | str) -> Decimal:
+    return Decimal(str(value)).quantize(Decimal("0.01"))

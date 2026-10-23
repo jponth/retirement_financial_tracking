@@ -1,0 +1,54 @@
+{
+  "recurring_actions": [
+    {
+      "condition": "always",
+      "timing": "Quarterly",
+      "priority": "High",
+      "action": "Update actual balances for all accounts"
+    },
+    {
+      "condition": "always",
+      "timing": "Annual",
+      "priority": "Medium",
+      "action": "Review federal and state tax assumptions and editable tax tables"
+    },
+    {
+      "condition": "has_hsa",
+      "timing": "Annual",
+      "priority": "Medium",
+      "action": "Review HSA contribution assumptions and healthcare spending"
+    }
+  ],
+  "triggered_actions": [
+    {
+      "trigger": "bucket_shortfall",
+      "timing": "As Needed",
+      "priority": "High",
+      "action_template": "Review funding and replenishment for {bucket_name}"
+    },
+    {
+      "trigger": "retirement_transition",
+      "timing": "As Needed",
+      "priority": "High",
+      "action_template": "Review retirement transition assumptions for {person_name}"
+    },
+    {
+      "trigger": "first_rmd",
+      "timing": "As Needed",
+      "priority": "High",
+      "action_template": "Confirm and schedule required minimum distributions"
+    },
+    {
+      "trigger": "depletion",
+      "timing": "As Needed",
+      "priority": "High",
+      "action_template": "Review spending, withdrawal, and allocation assumptions"
+    },
+    {
+      "trigger": "monte_carlo_downside",
+      "timing": "As Needed",
+      "priority": "Medium",
+      "action_template": "Review downside-return resilience"
+    }
+  ]
+}

@@ -22,6 +22,12 @@ dev = [
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+retirement_financial_tracking = [
+  "config/tax_tables_data/*.json",
+  "config/recommended_actions_data/*.json",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

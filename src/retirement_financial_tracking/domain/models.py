@@ -80,6 +80,16 @@ class ReturnScenarioType(str, Enum):
     BAD_FIRST_5_YEARS = "bad_first_5_years"
 
 
+class TaxModelType(str, Enum):
+    EFFECTIVE_RATE = "effective_rate"
+    BRACKET_BASED = "bracket_based"
+
+
+class TaxProjectionMode(str, Enum):
+    STATIC = "static"
+    INFLATION_ADJUSTED = "inflation_adjusted"
+
+
 class WithdrawalTaxPriority(str, Enum):
     TAXABLE_TAX_DEFERRED_TAX_FREE = "taxable_tax_deferred_tax_free"
     TAX_DEFERRED_TAXABLE_TAX_FREE = "tax_deferred_taxable_tax_free"
@@ -113,6 +123,8 @@ class RothHandlingPolicy(str, Enum):
 class HouseholdSettings(BaseModel):
     state: str = Field(default="CT", min_length=2)
     filing_status: FilingStatus = FilingStatus.MARRIED_FILING_JOINTLY
+    tax_model: TaxModelType = TaxModelType.EFFECTIVE_RATE
+    tax_projection_mode: TaxProjectionMode = TaxProjectionMode.STATIC
     projection_years: int = Field(default=30, ge=1, le=100)
     inflation_rate: float = Field(default=0.03, ge=-1.0, le=5.0)
     default_bucket_expense_years: float = Field(default=3.0, ge=0.0, le=100.0)

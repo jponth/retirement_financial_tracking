@@ -5,6 +5,12 @@ from decimal import Decimal
 import math
 import random
 
+from retirement_financial_tracking.config.tax_tables import (
+    TaxBracket,
+    TaxTable,
+    load_connecticut_tax_table,
+    load_federal_tax_table,
+)
 from retirement_financial_tracking.domain.models import (
     AccountForecastRow,
     AccountType,
@@ -18,6 +24,8 @@ from retirement_financial_tracking.domain.models import (
     RothHandlingPolicy,
     ReturnModelType,
     ReturnScenarioType,
+    TaxModelType,
+    TaxProjectionMode,
     TaxTreatment,
     WithdrawalAccountTypePriority,
     WithdrawalAllocationMethod,
@@ -161,8 +169,9 @@ def _generate_deterministic_forecast(
                 if account.tax_treatment is TaxTreatment.TAX_DEFERRED:
                     taxable_withdrawals += explicit_amount + rmd_amount + auto_amount
 
-            derived_tax_total = _derive_effective_taxes(
+            derived_tax_total = _derive_taxes(
                 plan=plan,
+                year=year,
                 explicit_tax_total=explicit_tax_total,
                 explicit_income_total=explicit_income_total + pension_total,
                 social_security_total=social_security_total,
@@ -434,9 +443,10 @@ def _derive_healthcare_expense(plan: HouseholdPlan, year: int) -> Decimal:
     return quantize_money(total)
 
 
-def _derive_effective_taxes(
+def _derive_taxes(
     *,
     plan: HouseholdPlan,
+    year: int,
     explicit_tax_total: Decimal,
     explicit_income_total: Decimal,
     social_security_total: Decimal,
@@ -445,6 +455,32 @@ def _derive_effective_taxes(
 ) -> Decimal:
     if explicit_tax_total > 0:
         return Decimal("0.00")
+    if plan.settings.tax_model is TaxModelType.BRACKET_BASED:
+        return _derive_bracket_based_taxes(
+            plan=plan,
+            year=year,
+            explicit_income_total=explicit_income_total,
+            social_security_total=social_security_total,
+            taxable_withdrawals=taxable_withdrawals,
+            hsa_contribution_total=hsa_contribution_total,
+        )
+    return _derive_effective_taxes(
+        plan=plan,
+        explicit_income_total=explicit_income_total,
+        social_security_total=social_security_total,
+        taxable_withdrawals=taxable_withdrawals,
+        hsa_contribution_total=hsa_contribution_total,
+    )
+
+
+def _derive_effective_taxes(
+    *,
+    plan: HouseholdPlan,
+    explicit_income_total: Decimal,
+    social_security_total: Decimal,
+    taxable_withdrawals: Decimal,
+    hsa_contribution_total: Decimal,
+) -> Decimal:
     total_rate = Decimal(
         str(plan.settings.federal_effective_tax_rate + plan.settings.state_effective_tax_rate)
     )
@@ -455,6 +491,137 @@ def _derive_effective_taxes(
     if taxable_base <= 0:
         return Decimal("0.00")
     return quantize_money(taxable_base * total_rate)
+
+
+def _derive_bracket_based_taxes(
+    *,
+    plan: HouseholdPlan,
+    year: int,
+    explicit_income_total: Decimal,
+    social_security_total: Decimal,
+    taxable_withdrawals: Decimal,
+    hsa_contribution_total: Decimal,
+) -> Decimal:
+    taxable_base = explicit_income_total + social_security_total + taxable_withdrawals
+    taxable_base -= hsa_contribution_total
+    if taxable_base <= 0:
+        return Decimal("0.00")
+
+    filing_status = plan.settings.filing_status
+    federal_table = _project_tax_table_for_year(
+        load_federal_tax_table(),
+        year=year,
+        projection_mode=plan.settings.tax_projection_mode,
+        inflation_rate=plan.settings.inflation_rate,
+    )
+    federal_taxable_income = max(
+        Decimal("0.00"),
+        taxable_base - federal_table.standard_deduction_by_status.get(filing_status, Decimal("0.00")),
+    )
+    federal_tax = _calculate_progressive_tax(
+        federal_taxable_income,
+        federal_table.brackets_by_status[filing_status],
+    )
+
+    state_tax = Decimal("0.00")
+    if plan.settings.state.strip().upper() == "CT":
+        state_table = _project_tax_table_for_year(
+            load_connecticut_tax_table(),
+            year=year,
+            projection_mode=plan.settings.tax_projection_mode,
+            inflation_rate=plan.settings.inflation_rate,
+        )
+        exemption = _lookup_income_based_exemption(
+            state_table,
+            filing_status,
+            taxable_base,
+        )
+        state_taxable_income = max(Decimal("0.00"), taxable_base - exemption)
+        state_tax = _calculate_progressive_tax(
+            state_taxable_income,
+            state_table.brackets_by_status[filing_status],
+        )
+    return quantize_money(federal_tax + state_tax)
+
+
+def _project_tax_table_for_year(
+    table: TaxTable,
+    *,
+    year: int,
+    projection_mode: TaxProjectionMode,
+    inflation_rate: float,
+) -> TaxTable:
+    if projection_mode is not TaxProjectionMode.INFLATION_ADJUSTED:
+        return table
+    if year <= table.base_year:
+        return table
+    growth_factor = Decimal(str((1 + inflation_rate) ** (year - table.base_year)))
+    return TaxTable(
+        base_year=table.base_year,
+        standard_deduction_by_status={
+            status: quantize_money(amount * growth_factor)
+            for status, amount in table.standard_deduction_by_status.items()
+        },
+        brackets_by_status={
+            status: tuple(
+                TaxBracket(
+                    upper_bound=None
+                    if bracket.upper_bound is None
+                    else quantize_money(bracket.upper_bound * growth_factor),
+                    rate=bracket.rate,
+                )
+                for bracket in brackets
+            )
+            for status, brackets in table.brackets_by_status.items()
+        },
+        exemption_by_status=None
+        if table.exemption_by_status is None
+        else {
+            status: tuple(
+                (
+                    None if upper_bound is None else quantize_money(upper_bound * growth_factor),
+                    quantize_money(amount * growth_factor),
+                )
+                for upper_bound, amount in tiers
+            )
+            for status, tiers in table.exemption_by_status.items()
+        },
+    )
+
+
+def _lookup_income_based_exemption(
+    table: TaxTable,
+    filing_status,
+    taxable_income: Decimal,
+) -> Decimal:
+    if not table.exemption_by_status:
+        return Decimal("0.00")
+    for upper_bound, amount in table.exemption_by_status.get(filing_status, ()):
+        if upper_bound is None or taxable_income <= upper_bound:
+            return amount
+    return Decimal("0.00")
+
+
+def _calculate_progressive_tax(
+    taxable_income: Decimal,
+    brackets: tuple[TaxBracket, ...],
+) -> Decimal:
+    if taxable_income <= 0:
+        return Decimal("0.00")
+    total_tax = Decimal("0.00")
+    lower_bound = Decimal("0.00")
+    for bracket in brackets:
+        upper_bound = bracket.upper_bound
+        if upper_bound is None:
+            taxable_slice = taxable_income - lower_bound
+        else:
+            taxable_slice = min(taxable_income, upper_bound) - lower_bound
+        if taxable_slice > 0:
+            total_tax += taxable_slice * bracket.rate
+        if upper_bound is None or taxable_income <= upper_bound:
+            break
+        lower_bound = upper_bound
+    return quantize_money(total_tax)
 
 
 def _derive_hsa_contributions(

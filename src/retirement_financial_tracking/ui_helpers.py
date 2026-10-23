@@ -27,6 +27,8 @@ from retirement_financial_tracking.domain.models import (
     RothHandlingPolicy,
     ReturnModelType,
     ReturnScenarioType,
+    TaxModelType,
+    TaxProjectionMode,
     TaxTreatment,
     WithdrawalAccountTypePriority,
     WithdrawalAllocationMethod,
@@ -48,6 +50,8 @@ PLAN_UI_SCALAR_KEYS = [
     "base_year",
     "state",
     "filing_status",
+    "tax_model",
+    "tax_projection_mode",
     "projection_years",
     "inflation_rate",
     "default_bucket_expense_years",
@@ -161,6 +165,8 @@ def _sample_plan_two_bucket() -> HouseholdPlan:
         settings=HouseholdSettings(
             state="CT",
             filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+            tax_model=TaxModelType.EFFECTIVE_RATE,
+            tax_projection_mode=TaxProjectionMode.STATIC,
             projection_years=30,
             inflation_rate=0.03,
             default_bucket_expense_years=3.0,
@@ -348,6 +354,8 @@ def _sample_plan_three_bucket() -> HouseholdPlan:
         settings=HouseholdSettings(
             state="CT",
             filing_status=FilingStatus.MARRIED_FILING_JOINTLY,
+            tax_model=TaxModelType.EFFECTIVE_RATE,
+            tax_projection_mode=TaxProjectionMode.STATIC,
             projection_years=30,
             inflation_rate=0.03,
             default_bucket_expense_years=3.0,
@@ -552,6 +560,8 @@ def plan_to_ui_values(plan: HouseholdPlan) -> dict[str, object]:
         "base_year": plan.base_year,
         "state": plan.settings.state,
         "filing_status": plan.settings.filing_status.value,
+        "tax_model": plan.settings.tax_model.value,
+        "tax_projection_mode": plan.settings.tax_projection_mode.value,
         "projection_years": plan.settings.projection_years,
         "inflation_rate": plan.settings.inflation_rate,
         "default_bucket_expense_years": plan.settings.default_bucket_expense_years,
@@ -686,6 +696,12 @@ def ui_values_to_plan(payload: UIPlanPayload | Mapping[str, object]) -> Househol
         state=(payload.get("state") or "CT").strip(),
         filing_status=FilingStatus(
             payload.get("filing_status") or FilingStatus.MARRIED_FILING_JOINTLY.value
+        ),
+        tax_model=TaxModelType(
+            payload.get("tax_model") or TaxModelType.EFFECTIVE_RATE.value
+        ),
+        tax_projection_mode=TaxProjectionMode(
+            payload.get("tax_projection_mode") or TaxProjectionMode.STATIC.value
         ),
         projection_years=int(payload.get("projection_years") or 30),
         inflation_rate=float(_normalize_numeric_input(payload.get("inflation_rate"), 0.0)),
@@ -862,6 +878,8 @@ def forecast_for_ui(plan: HouseholdPlan) -> tuple[list[list[object]], list[list[
         f"Forecast years: {len(result.rows)}",
         f"Starting year: {result.rows[0].year if result.rows else plan.base_year}",
         f"Return model: {plan.settings.return_model_type.value}",
+        f"Tax model: {plan.settings.tax_model.value}",
+        f"Tax projection mode: {plan.settings.tax_projection_mode.value}",
     ]
     if plan.settings.return_model_type is ReturnModelType.SCENARIO_BASED:
         summary_lines.append(f"Return scenario: {plan.settings.return_scenario_type.value}")

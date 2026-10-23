@@ -1,0 +1,48 @@
+{
+  "base_year": 2024,
+  "tax_year_label": "2024 baseline",
+  "standard_deduction": {
+    "single": 14600,
+    "married_filing_jointly": 29200,
+    "married_filing_separately": 14600,
+    "head_of_household": 21900
+  },
+  "ordinary_income_brackets": {
+    "single": [
+      {"up_to": 11600, "rate": 0.10},
+      {"up_to": 47150, "rate": 0.12},
+      {"up_to": 100525, "rate": 0.22},
+      {"up_to": 191950, "rate": 0.24},
+      {"up_to": 243725, "rate": 0.32},
+      {"up_to": 609350, "rate": 0.35},
+      {"up_to": null, "rate": 0.37}
+    ],
+    "married_filing_jointly": [
+      {"up_to": 23200, "rate": 0.10},
+      {"up_to": 94300, "rate": 0.12},
+      {"up_to": 201050, "rate": 0.22},
+      {"up_to": 383900, "rate": 0.24},
+      {"up_to": 487450, "rate": 0.32},
+      {"up_to": 731200, "rate": 0.35},
+      {"up_to": null, "rate": 0.37}
+    ],
+    "married_filing_separately": [
+      {"up_to": 11600, "rate": 0.10},
+      {"up_to": 47150, "rate": 0.12},
+      {"up_to": 100525, "rate": 0.22},
+      {"up_to": 191950, "rate": 0.24},
+      {"up_to": 243725, "rate": 0.32},
+      {"up_to": 365600, "rate": 0.35},
+      {"up_to": null, "rate": 0.37}
+    ],
+    "head_of_household": [
+      {"up_to": 16550, "rate": 0.10},
+      {"up_to": 63100, "rate": 0.12},
+      {"up_to": 100500, "rate": 0.22},
+      {"up_to": 191950, "rate": 0.24},
+      {"up_to": 243700, "rate": 0.32},
+      {"up_to": 609350, "rate": 0.35},
+      {"up_to": null, "rate": 0.37}
+    ]
+  }
+}

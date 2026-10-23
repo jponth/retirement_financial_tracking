@@ -463,6 +463,16 @@ def build_ui() -> gr.Blocks:
             )
 
         with gr.Row():
+            tax_model = gr.Dropdown(
+                label="Tax Model",
+                choices=["effective_rate", "bracket_based"],
+                value=defaults["tax_model"],
+            )
+            tax_projection_mode = gr.Dropdown(
+                label="Tax Projection Mode",
+                choices=["static", "inflation_adjusted"],
+                value=defaults["tax_projection_mode"],
+            )
             federal_effective_tax_rate = gr.Number(
                 label="Federal Effective Tax Rate",
                 value=defaults["federal_effective_tax_rate"],
@@ -471,6 +481,7 @@ def build_ui() -> gr.Blocks:
                 label="State Effective Tax Rate",
                 value=defaults["state_effective_tax_rate"],
             )
+        with gr.Row():
             rmd_start_age = gr.Number(
                 label="RMD Start Age",
                 value=defaults["rmd_start_age"],
@@ -663,6 +674,8 @@ def build_ui() -> gr.Blocks:
             base_year,
             state,
             filing_status,
+            tax_model,
+            tax_projection_mode,
             projection_years,
             inflation_rate,
             default_bucket_expense_years,
@@ -710,6 +723,8 @@ def build_ui() -> gr.Blocks:
             base_year,
             state,
             filing_status,
+            tax_model,
+            tax_projection_mode,
             projection_years,
             inflation_rate,
             default_bucket_expense_years,
@@ -834,6 +849,8 @@ def _ui_output_tuple(values: dict[str, object], status_message: str, imported_pa
         values["base_year"],
         values["state"],
         values["filing_status"],
+        values["tax_model"],
+        values["tax_projection_mode"],
         values["projection_years"],
         values["inflation_rate"],
         values["default_bucket_expense_years"],
