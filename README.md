@@ -144,7 +144,10 @@ The code is structured around an internal validated model, while allowing user d
 
 ## Starter UI
 
-A starter Gradio app is available in `app.py`. It supports:
+The current single-page Gradio UI is preserved as the simple SPA entrypoint in `simple_spa.py`.
+The existing `app.py` launcher still works as a compatibility entrypoint for the same UI.
+
+The current simple SPA supports:
 
 - selecting and loading sample cases (`2-Bucket Sample`, `3-Bucket Sample`)
 - importing a case workbook
@@ -226,7 +229,13 @@ When exporting from an existing workbook:
 - the summary sheet is also added as a new timestamped sheet
 - older forecast output sheets are preserved for history instead of being overwritten
 
-Run it with:
+Run the simple SPA with:
+
+```bash
+.venv/bin/python simple_spa.py
+```
+
+Compatibility launcher:
 
 ```bash
 .venv/bin/python app.py

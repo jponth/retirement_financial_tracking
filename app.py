@@ -373,7 +373,11 @@ def build_ui() -> gr.Blocks:
                 value=DEFAULT_EXPORT_DIRECTORY,
             )
 
-        export_file = gr.File(label="Exported Workbook")
+        export_file = gr.File(
+            label="Exported Workbook",
+            elem_id="exported-workbook-file",
+            visible=False,
+        )
         imported_workbook_path = gr.State(value=None)
 
         with gr.Row():
@@ -882,7 +886,7 @@ def run_forecast_ui(*args):
             table,
             account_table,
             summary,
-            "Forecast completed successfully.",
+            f"Forecast completed successfully.\n\nReport saved to `{report_pdf_path}`",
             report_markdown,
             report_markdown,
             report_pdf_path,
@@ -913,9 +917,9 @@ def export_workbook_ui(*args):
             export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
             imported_workbook_path=imported_workbook_path,
         )
-        return path, f"Workbook exported to `{path}`"
+        return gr.update(value=path, visible=True), f"Workbook exported to `{path}`"
     except Exception as exc:
-        return None, f"Export failed: `{exc}`"
+        return gr.update(value=None, visible=False), f"Export failed: `{exc}`"
 
 
 def open_report_popup(markdown: str):

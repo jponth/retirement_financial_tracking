@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 import app as app_module
+import simple_spa as simple_spa_module
 import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
     Account,
@@ -43,6 +44,7 @@ from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
     EXPORT_MODE_SAVE_UPDATED_COPY,
     EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
+    PLAN_UI_INPUT_KEYS,
     UIPlanPayload,
     export_plan_for_ui,
     forecast_for_ui,
@@ -2040,3 +2042,28 @@ def test_forecast_report_markdown_and_pdf_generation(tmp_path):
 def test_build_ui_instantiates_with_report_popup():
     demo = app_module.build_ui()
     assert demo is not None
+
+
+def test_simple_spa_entrypoint_reuses_current_build_ui():
+    demo = simple_spa_module.build_ui()
+    assert demo is not None
+
+
+def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):
+    payload = UIPlanPayload.from_mapping(plan_to_ui_values(sample_plan())).as_dict()
+
+    monkeypatch.setattr(
+        app_module,
+        "forecast_with_report_for_ui",
+        lambda plan: (
+            [[2026, "1"]],
+            [[2026, "acct-1"]],
+            "summary",
+            "# Report",
+            "/tmp/sample_report.pdf",
+        ),
+    )
+
+    result = app_module.run_forecast_ui(*[payload[key] for key in PLAN_UI_INPUT_KEYS])
+
+    assert result[3] == "Forecast completed successfully.\n\nReport saved to `/tmp/sample_report.pdf`"
