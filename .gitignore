@@ -8,5 +8,5 @@ dist/
 build/
 *.xlsx
 *.log
-export/
+exports/
 reports/

@@ -34,9 +34,9 @@ The workbook import/export layer now supports a retirement-specific case file wi
 - `Cash Flows`
 - `Actual Balances`
 - `Forecast-Sumry-*` (exported when a forecast is provided)
-- `Forecast` (exported when a forecast is provided)
-- `Account Forecast` (exported when a forecast is provided)
-- `Monte Carlo Summary` (exported for Monte Carlo runs)
+- `Forecast-Amts-*` (exported when a forecast is provided)
+- `Forecast-Accts-*` (exported when a forecast is provided)
+- `Forecast-MC-*` (exported for Monte Carlo runs)
 
 The schema is intended to capture real retirement-planning inputs such as filing status, inflation assumptions, Social Security estimates, healthcare costs, bucket targets, custodian accounts, holdings, maturity data, and actual account balance snapshots.
 
@@ -142,12 +142,46 @@ The bundled files are a configurable baseline, not a live tax-law feed. If tax b
 
 The code is structured around an internal validated model, while allowing user data to move in and out through workbooks. The workbook is the portable artifact. It is not the internal runtime model.
 
-## Starter UI
+## UI modes
 
-The current single-page Gradio UI is preserved as the simple SPA entrypoint in `simple_spa.py`.
-The existing `app.py` launcher still works as a compatibility entrypoint for the same UI.
+The project now has two Gradio entrypoints:
 
-The current simple SPA supports:
+- `app.py`
+  - the newer workspace-style UI
+  - organizes the app into `Case Setup`, `Forecast`, `Report`, and `Export`
+  - keeps a persistent case snapshot rail visible on the right
+- `simple_spa.py`
+  - the preserved single-page power-user UI
+  - keeps the old "everything on one page" operator-console workflow intact
+  - launches the preserved implementation in `simple_spa_app.py`
+
+### Workspace UI (`app.py`)
+
+The workspace UI currently supports:
+
+- loading a sample case or importing a workbook
+- editing the same validated plan inputs through grouped sections instead of one long page
+- organizing input work into:
+  - `Household`
+  - `Tax & Forecast Rules`
+  - `People`
+  - `Accounts`
+  - `Buckets`
+  - `Cash Flows`
+  - `Holdings`
+  - `Actual Balances`
+- running the forecast from a dedicated `Forecast` page
+- viewing household-level forecast output in a dedicated `Household Forecast` tab
+- viewing account-level forecast output in a dedicated `Account Forecast` tab
+- reviewing the presentable markdown report from a dedicated `Report` page
+- downloading the generated PDF report from that same `Report` page
+- exporting from a dedicated `Export` page
+- keeping a side snapshot rail with the current household, tax/return model, latest forecast highlights, and latest output file names
+- using the same forecast/report/export engine as the simple SPA while presenting it in a friendlier workspace shell
+
+### Simple SPA (`simple_spa.py`)
+
+The preserved simple SPA supports:
 
 - selecting and loading sample cases (`2-Bucket Sample`, `3-Bucket Sample`)
 - importing a case workbook
@@ -194,7 +228,9 @@ Forecast-triggered actions are still derived from the plan and forecast output, 
 
 After a forecast run, the app now prepares a presentable report in two forms from the same underlying report model:
 
-- a popup markdown report in the Gradio UI
+- a markdown report inside the UI
+  - dedicated `Report` tab in `app.py`
+  - popup report view in `simple_spa.py`
 - a downloadable PDF report
 
 The current report includes:
@@ -225,20 +261,24 @@ Workbook import for tabular sheets is header-name-based rather than position-bas
 When exporting from an existing workbook:
 
 - `Accounts` is left untouched if the sheet already exists
-- household/account forecast outputs are added as new timestamped sheets
-- the summary sheet is also added as a new timestamped sheet
+- forecast outputs are added as new timestamped sheets:
+  - `Forecast-Sumry-<DD-Mon-YY-HHMMSS>`
+  - `Forecast-Amts-<DD-Mon-YY-HHMMSS>`
+  - `Forecast-Accts-<DD-Mon-YY-HHMMSS>`
+  - `Forecast-MC-<DD-Mon-YY-HHMMSS>` for Monte Carlo runs
 - older forecast output sheets are preserved for history instead of being overwritten
+- newer forecast output sheets are inserted before older forecast output sheets
+
+Run the structured workspace UI with:
+
+```bash
+.venv/bin/python app.py
+```
 
 Run the simple SPA with:
 
 ```bash
 .venv/bin/python simple_spa.py
-```
-
-Compatibility launcher:
-
-```bash
-.venv/bin/python app.py
 ```
 
 ## Tests

@@ -1,4 +1,4 @@
-from app import CSS, build_ui
+from simple_spa_app import CSS, build_ui
 
 
 if __name__ == "__main__":

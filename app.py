@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import gradio as gr
 
 from retirement_financial_tracking import load_app_metadata
 from retirement_financial_tracking.ui_helpers import (
-    DEFAULT_SAMPLE_NAME,
     DEFAULT_EXPORT_DIRECTORY,
+    DEFAULT_SAMPLE_NAME,
     EXPORT_MODE_NEW_FILE,
     EXPORT_MODE_SAVE_UPDATED_COPY,
     EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
+    PLAN_UI_INPUT_KEYS,
     UIPlanPayload,
     export_plan_for_ui,
     forecast_with_report_for_ui,
@@ -18,699 +21,594 @@ from retirement_financial_tracking.ui_helpers import (
     sample_plan_names,
     ui_values_to_plan,
 )
+from simple_spa_app import (
+    ACCOUNT_FORECAST_HEADERS,
+    ACCOUNT_HEADERS,
+    BUCKET_HEADERS,
+    CASH_FLOW_HEADERS,
+    CSS as SIMPLE_SPA_CSS,
+    FORECAST_HEADERS,
+    HOLDING_HEADERS,
+    PEOPLE_HEADERS,
+    SNAPSHOT_HEADERS,
+)
 
 
-PEOPLE_HEADERS = [
-    "person_id",
-    "role",
-    "display_name",
-    "birth_year",
-    "retirement_year",
-    "life_expectancy",
-    "social_security_claim_age",
-    "estimated_monthly_social_security",
-    "pension_start_age",
-    "estimated_monthly_pension",
-    "pension_indexed",
-    "medicare_start_year",
-    "annual_healthcare_premium",
-    "annual_healthcare_out_of_pocket",
-    "hsa_eligible",
-    "desired_annual_hsa_contribution",
-]
-
-BUCKET_HEADERS = [
-    "bucket_id",
-    "bucket_name",
-    "bucket_type",
-    "target_amount",
-    "target_years",
-    "replenishment_source_bucket_id",
-    "notes",
-]
-
-ACCOUNT_HEADERS = [
-    "account_id",
-    "account_name",
-    "account_type",
-    "owner",
-    "custodian",
-    "tax_treatment",
-    "opening_balance",
-    "expected_annual_return_rate",
-    "bucket_id",
-    "contribution_allowed",
-    "withdrawal_allowed",
-    "roth_conversion_source_allowed",
-]
-
-CASH_FLOW_HEADERS = [
-    "flow_id",
-    "flow_name",
-    "category",
-    "annual_amount",
-    "start_year",
-    "end_year",
-    "annual_growth_rate",
-    "person_id",
-    "target_account_id",
-    "notes",
-]
-
-HOLDING_HEADERS = [
-    "holding_id",
-    "account_id",
-    "holding_name",
-    "ticker",
-    "asset_class",
-    "market_value",
-    "bucket_id",
-    "maturity_year",
-    "fdic_issuer",
-    "notes",
-]
-
-SNAPSHOT_HEADERS = [
-    "snapshot_id",
-    "account_id",
-    "as_of_date",
-    "balance",
-    "source",
-]
-
-FORECAST_HEADERS = [
-    "year",
-    "explicit_income_total",
-    "social_security_total",
-    "pension_total",
-    "income_total",
-    "living_expense_total",
-    "healthcare_total",
-    "hsa_contribution_total",
-    "explicit_expense_total",
-    "expense_total",
-    "explicit_tax_total",
-    "derived_tax_total",
-    "tax_total",
-    "hsa_healthcare_withdrawal_total",
-    "explicit_withdrawal_total",
-    "rmd_withdrawal_total",
-    "auto_funding_withdrawal_total",
-    "withdrawal_total",
-    "short_term_ending_assets",
-    "intermediate_ending_assets",
-    "long_term_ending_assets",
-    "net_cash_flow",
-    "total_starting_assets",
-    "total_ending_assets",
-]
-
-ACCOUNT_FORECAST_HEADERS = [
-    "year",
-    "account_id",
-    "account_name",
-    "bucket_type",
-    "effective_annual_return_rate",
-    "start_balance",
-    "contributions",
-    "explicit_withdrawals",
-    "rmd_withdrawals",
-    "hsa_healthcare_withdrawals",
-    "auto_funding_withdrawals",
-    "replenishment_inflows",
-    "replenishment_outflows",
-    "withdrawals",
-    "investment_growth",
-    "end_balance",
-]
-
-
-CSS = """
-    .numeric-table th,
-    .numeric-table td,
-    .numeric-table .header-cell,
-    .numeric-table .body-cell {
-        font-variant-numeric: tabular-nums;
+CSS = (
+    SIMPLE_SPA_CSS
+    + """
+    #workspace-shell {
+        gap: 1.5rem;
     }
 
-    #people-table th:nth-child(4),
-    #people-table th:nth-child(5),
-    #people-table th:nth-child(6),
-    #people-table th:nth-child(7),
-    #people-table th:nth-child(8),
-    #people-table th:nth-child(9),
-    #people-table th:nth-child(10),
-    #people-table th:nth-child(12),
-    #people-table th:nth-child(13),
-    #people-table th:nth-child(14),
-    #people-table th:nth-child(16),
-    #people-table td:nth-child(4),
-    #people-table td:nth-child(5),
-    #people-table td:nth-child(6),
-    #people-table td:nth-child(7),
-    #people-table td:nth-child(8),
-    #people-table td:nth-child(9),
-    #people-table td:nth-child(10),
-    #people-table td:nth-child(12),
-    #people-table td:nth-child(13),
-    #people-table td:nth-child(14),
-    #people-table td:nth-child(16),
-    #people-table .header-cell[data-heading="3"],
-    #people-table .header-cell[data-heading="4"],
-    #people-table .header-cell[data-heading="5"],
-    #people-table .header-cell[data-heading="6"],
-    #people-table .header-cell[data-heading="7"],
-    #people-table .header-cell[data-heading="8"],
-    #people-table .header-cell[data-heading="9"],
-    #people-table .header-cell[data-heading="11"],
-    #people-table .header-cell[data-heading="12"],
-    #people-table .header-cell[data-heading="13"],
-    #people-table .header-cell[data-heading="15"],
-    #people-table .body-cell[data-col="3"],
-    #people-table .body-cell[data-col="4"],
-    #people-table .body-cell[data-col="5"],
-    #people-table .body-cell[data-col="6"],
-    #people-table .body-cell[data-col="7"],
-    #people-table .body-cell[data-col="8"],
-    #people-table .body-cell[data-col="9"],
-    #people-table .body-cell[data-col="11"],
-    #people-table .body-cell[data-col="12"],
-    #people-table .body-cell[data-col="13"],
-    #people-table .body-cell[data-col="15"],
-    #buckets-table th:nth-child(4),
-    #buckets-table th:nth-child(5),
-    #buckets-table td:nth-child(4),
-    #buckets-table td:nth-child(5),
-    #buckets-table .header-cell[data-heading="3"],
-    #buckets-table .header-cell[data-heading="4"],
-    #buckets-table .body-cell[data-col="3"],
-    #buckets-table .body-cell[data-col="4"],
-    #accounts-table th:nth-child(7),
-    #accounts-table th:nth-child(8),
-    #accounts-table td:nth-child(7),
-    #accounts-table td:nth-child(8),
-    #accounts-table .header-cell[data-heading="6"],
-    #accounts-table .header-cell[data-heading="7"],
-    #accounts-table .body-cell[data-col="6"],
-    #accounts-table .body-cell[data-col="7"],
-    #cash-flows-table th:nth-child(4),
-    #cash-flows-table th:nth-child(5),
-    #cash-flows-table th:nth-child(6),
-    #cash-flows-table th:nth-child(7),
-    #cash-flows-table td:nth-child(4),
-    #cash-flows-table td:nth-child(5),
-    #cash-flows-table td:nth-child(6),
-    #cash-flows-table td:nth-child(7),
-    #cash-flows-table .header-cell[data-heading="3"],
-    #cash-flows-table .header-cell[data-heading="4"],
-    #cash-flows-table .header-cell[data-heading="5"],
-    #cash-flows-table .header-cell[data-heading="6"],
-    #cash-flows-table .body-cell[data-col="3"],
-    #cash-flows-table .body-cell[data-col="4"],
-    #cash-flows-table .body-cell[data-col="5"],
-    #cash-flows-table .body-cell[data-col="6"],
-    #holdings-table th:nth-child(6),
-    #holdings-table th:nth-child(8),
-    #holdings-table td:nth-child(6),
-    #holdings-table td:nth-child(8),
-    #holdings-table .header-cell[data-heading="5"],
-    #holdings-table .header-cell[data-heading="7"],
-    #holdings-table .body-cell[data-col="5"],
-    #holdings-table .body-cell[data-col="7"],
-    #snapshots-table th:nth-child(4),
-    #snapshots-table td:nth-child(4),
-    #snapshots-table .header-cell[data-heading="3"],
-    #snapshots-table .body-cell[data-col="3"],
-    #forecast-table th,
-    #forecast-table td,
-    #forecast-table .header-cell,
-    #forecast-table .body-cell,
-    #account-forecast-table th:nth-child(1),
-    #account-forecast-table th:nth-child(5),
-    #account-forecast-table th:nth-child(6),
-    #account-forecast-table th:nth-child(7),
-    #account-forecast-table th:nth-child(8),
-    #account-forecast-table th:nth-child(9),
-    #account-forecast-table th:nth-child(10),
-    #account-forecast-table th:nth-child(11),
-    #account-forecast-table th:nth-child(12),
-    #account-forecast-table th:nth-child(13),
-    #account-forecast-table th:nth-child(14),
-    #account-forecast-table th:nth-child(15),
-    #account-forecast-table th:nth-child(16),
-    #account-forecast-table td:nth-child(1),
-    #account-forecast-table td:nth-child(5),
-    #account-forecast-table td:nth-child(6),
-    #account-forecast-table td:nth-child(7),
-    #account-forecast-table td:nth-child(8),
-    #account-forecast-table td:nth-child(9),
-    #account-forecast-table td:nth-child(10),
-    #account-forecast-table td:nth-child(11),
-    #account-forecast-table td:nth-child(12),
-    #account-forecast-table td:nth-child(13),
-    #account-forecast-table td:nth-child(14),
-    #account-forecast-table td:nth-child(15),
-    #account-forecast-table td:nth-child(16) {
-        text-align: right !important;
+    #workspace-shell > .gr-column:first-child {
+        min-width: 0;
     }
 
-    #account-forecast-table .header-cell[data-heading="0"],
-    #account-forecast-table .header-cell[data-heading="4"],
-    #account-forecast-table .header-cell[data-heading="5"],
-    #account-forecast-table .header-cell[data-heading="6"],
-    #account-forecast-table .header-cell[data-heading="7"],
-    #account-forecast-table .header-cell[data-heading="8"],
-    #account-forecast-table .header-cell[data-heading="9"],
-    #account-forecast-table .header-cell[data-heading="10"],
-    #account-forecast-table .header-cell[data-heading="11"],
-    #account-forecast-table .header-cell[data-heading="12"],
-    #account-forecast-table .header-cell[data-heading="13"],
-    #account-forecast-table .header-cell[data-heading="14"],
-    #account-forecast-table .header-cell[data-heading="15"],
-    #account-forecast-table .body-cell[data-col="0"],
-    #account-forecast-table .body-cell[data-col="4"],
-    #account-forecast-table .body-cell[data-col="5"],
-    #account-forecast-table .body-cell[data-col="6"],
-    #account-forecast-table .body-cell[data-col="7"],
-    #account-forecast-table .body-cell[data-col="8"],
-    #account-forecast-table .body-cell[data-col="9"],
-    #account-forecast-table .body-cell[data-col="10"],
-    #account-forecast-table .body-cell[data-col="11"],
-    #account-forecast-table .body-cell[data-col="12"],
-    #account-forecast-table .body-cell[data-col="13"],
-    #account-forecast-table .body-cell[data-col="14"],
-    #account-forecast-table .body-cell[data-col="15"] {
-        text-align: right !important;
+    #summary-rail {
+        background: #f8fafc;
+        border: 1px solid #dbe4ee;
+        border-radius: 14px;
+        padding: 1rem;
     }
 
-    #report-overlay {
-        position: fixed !important;
-        inset: 0;
-        z-index: 1000;
-        padding: 3vh 4vw;
-        background: rgba(15, 23, 42, 0.55);
-        overflow-y: auto;
+    #summary-rail h3 {
+        margin-bottom: 0.5rem;
     }
 
-    #report-modal-card {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 24px 28px;
-        border-radius: 18px;
+    #report-panel,
+    #forecast-panel,
+    #export-panel,
+    #case-setup-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 1rem;
         background: white;
-        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
-    }
-
-    #report-modal-card table {
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
     }
 """
+)
+
+
+def run_forecast_ui(*args):
+    try:
+        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args))
+        table, account_table, summary, report_markdown, report_pdf_path = forecast_with_report_for_ui(
+            plan
+        )
+        return (
+            table,
+            account_table,
+            summary,
+            f"Forecast completed successfully.\n\nReport saved to `{report_pdf_path}`",
+            report_markdown,
+            report_pdf_path,
+        )
+    except Exception as exc:
+        return (
+            [],
+            [],
+            f"Forecast failed.\n\n`{exc}`",
+            f"Forecast failed: `{exc}`",
+            "",
+            None,
+        )
+
+
+def export_workbook_ui(*args):
+    try:
+        export_mode = args[-3]
+        export_directory = args[-2]
+        imported_workbook_path = args[-1]
+        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-3]))
+        path = export_plan_for_ui(
+            plan,
+            export_mode=export_mode or EXPORT_MODE_NEW_FILE,
+            export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
+            imported_workbook_path=imported_workbook_path,
+        )
+        return gr.update(value=path, visible=True), f"Workbook exported to `{path}`", path
+    except Exception as exc:
+        return gr.update(value=None, visible=False), f"Export failed: `{exc}`", None
 
 
 def build_ui() -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
+    default_report_message = (
+        "Run the forecast from the Forecast tab to generate a presentable report here."
+    )
 
     with gr.Blocks(title=metadata.product_display_name) as demo:
         gr.Markdown(f"# {metadata.product_display_name}")
         gr.Markdown(
-            "Create or load a retirement case workbook, edit the main planning inputs, "
-            "run the forecast, and export the updated case."
+            "Use this workspace UI for a cleaner case flow across setup, forecast, report, and export. "
+            "If you want the original everything-on-one-page operator console, launch `simple_spa.py`."
         )
 
         status = gr.Markdown("Ready.")
-
-        with gr.Row():
-            sample_selector = gr.Dropdown(
-                label="Sample Case",
-                choices=sample_plan_names(),
-                value=DEFAULT_SAMPLE_NAME,
-            )
-            load_sample_btn = gr.Button("Load Sample Case", variant="secondary")
-            workbook_input = gr.File(label="Import Workbook", type="filepath")
-            run_forecast_btn = gr.Button("Run Forecast", variant="primary")
-            view_report_btn = gr.Button(
-                "View Report",
-                variant="secondary",
-                interactive=False,
-            )
-            export_mode = gr.Dropdown(
-                label="Export Mode",
-                choices=[
-                    EXPORT_MODE_SAVE_UPDATED_COPY,
-                    EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
-                    EXPORT_MODE_NEW_FILE,
-                ],
-                value=EXPORT_MODE_SAVE_UPDATED_COPY,
-            )
-            export_btn = gr.Button("Export Workbook", variant="secondary")
-
-        with gr.Row():
-            export_directory = gr.Textbox(
-                label="Target Export Folder",
-                value=DEFAULT_EXPORT_DIRECTORY,
-            )
-
-        export_file = gr.File(
-            label="Exported Workbook",
-            elem_id="exported-workbook-file",
-            visible=False,
-        )
         imported_workbook_path = gr.State(value=None)
+        latest_report_path = gr.State(value=None)
+        latest_export_path = gr.State(value=None)
+        latest_forecast_summary = gr.State(value="")
 
-        with gr.Row():
-            plan_id = gr.Textbox(label="Plan ID", value=defaults["plan_id"])
-            household_name = gr.Textbox(label="Household Name", value=defaults["household_name"])
-            base_year = gr.Number(label="Base Year", value=defaults["base_year"], precision=0)
+        with gr.Row(elem_id="workspace-shell", equal_height=False):
+            with gr.Column(scale=7):
+                with gr.Tabs():
+                    with gr.Tab("Case Setup"):
+                        with gr.Column(elem_id="case-setup-panel"):
+                            with gr.Row():
+                                sample_selector = gr.Dropdown(
+                                    label="Sample Case",
+                                    choices=sample_plan_names(),
+                                    value=DEFAULT_SAMPLE_NAME,
+                                )
+                                load_sample_btn = gr.Button(
+                                    "Load Sample Case",
+                                    variant="secondary",
+                                )
+                                workbook_input = gr.File(label="Import Workbook", type="filepath")
 
-        with gr.Row():
-            state = gr.Textbox(label="State", value=defaults["state"])
-            filing_status = gr.Dropdown(
-                label="Filing Status",
-                choices=[
-                    "single",
-                    "married_filing_jointly",
-                    "married_filing_separately",
-                    "head_of_household",
-                ],
-                value=defaults["filing_status"],
-            )
-            projection_years = gr.Number(
-                label="Projection Years",
-                value=defaults["projection_years"],
-                precision=0,
-            )
+                            with gr.Tabs():
+                                with gr.Tab("Household"):
+                                    with gr.Row():
+                                        plan_id = gr.Textbox(
+                                            label="Plan ID",
+                                            value=defaults["plan_id"],
+                                        )
+                                        household_name = gr.Textbox(
+                                            label="Household Name",
+                                            value=defaults["household_name"],
+                                        )
+                                        base_year = gr.Number(
+                                            label="Base Year",
+                                            value=defaults["base_year"],
+                                            precision=0,
+                                        )
 
-        with gr.Row():
-            inflation_rate = gr.Number(label="Inflation Rate", value=defaults["inflation_rate"])
-            default_bucket_expense_years = gr.Number(
-                label="Default Bucket Expense Years",
-                value=defaults["default_bucket_expense_years"],
-            )
-            return_model_type = gr.Dropdown(
-                label="Return Model",
-                choices=["simple", "scenario_based", "monte_carlo"],
-                value=defaults["return_model_type"],
-            )
-            return_scenario_type = gr.Dropdown(
-                label="Return Scenario",
-                choices=["base", "conservative", "optimistic", "bad_first_5_years"],
-                value=defaults["return_scenario_type"],
-            )
+                                    with gr.Row():
+                                        state = gr.Textbox(
+                                            label="State",
+                                            value=defaults["state"],
+                                        )
+                                        filing_status = gr.Dropdown(
+                                            label="Filing Status",
+                                            choices=[
+                                                "single",
+                                                "married_filing_jointly",
+                                                "married_filing_separately",
+                                                "head_of_household",
+                                            ],
+                                            value=defaults["filing_status"],
+                                        )
+                                        projection_years = gr.Number(
+                                            label="Projection Years",
+                                            value=defaults["projection_years"],
+                                            precision=0,
+                                        )
 
-        with gr.Row():
-            monte_carlo_simulations = gr.Number(
-                label="Monte Carlo Simulations",
-                value=defaults["monte_carlo_simulations"],
-                precision=0,
-            )
-            monte_carlo_seed = gr.Number(
-                label="Monte Carlo Seed",
-                value=defaults["monte_carlo_seed"],
-                precision=0,
-            )
-            monte_carlo_depletion_target_year = gr.Number(
-                label="Depletion Target Year",
-                value=defaults["monte_carlo_depletion_target_year"],
-                precision=0,
-            )
-            monte_carlo_depletion_target_age = gr.Number(
-                label="Depletion Target Age",
-                value=defaults["monte_carlo_depletion_target_age"],
-                precision=0,
-            )
+                                    with gr.Row():
+                                        planned_annual_spending = gr.Number(
+                                            label="Planned Annual Spending",
+                                            value=defaults["planned_annual_spending"],
+                                        )
+                                        target_cash_reserve = gr.Number(
+                                            label="Target Cash Reserve",
+                                            value=defaults["target_cash_reserve"],
+                                        )
+                                        rmd_start_age = gr.Number(
+                                            label="RMD Start Age",
+                                            value=defaults["rmd_start_age"],
+                                            precision=0,
+                                        )
 
-        with gr.Row():
-            bucket_return_short_term = gr.Number(
-                label="Short-Term Return",
-                value=defaults["bucket_return_short_term"],
-            )
-            bucket_return_intermediate = gr.Number(
-                label="Intermediate Return",
-                value=defaults["bucket_return_intermediate"],
-            )
-            bucket_return_long_term = gr.Number(
-                label="Long-Term Return",
-                value=defaults["bucket_return_long_term"],
-            )
-            bucket_return_other = gr.Number(
-                label="Other/Fallback Return",
-                value=defaults["bucket_return_other"],
-            )
+                                    notes = gr.Textbox(
+                                        label="Notes",
+                                        value=defaults["notes"],
+                                        lines=4,
+                                    )
 
-        with gr.Row():
-            bucket_volatility_short_term = gr.Number(
-                label="Short-Term Volatility",
-                value=defaults["bucket_volatility_short_term"],
-            )
-            bucket_volatility_intermediate = gr.Number(
-                label="Intermediate Volatility",
-                value=defaults["bucket_volatility_intermediate"],
-            )
-            bucket_volatility_long_term = gr.Number(
-                label="Long-Term Volatility",
-                value=defaults["bucket_volatility_long_term"],
-            )
-            bucket_volatility_other = gr.Number(
-                label="Other/Fallback Volatility",
-                value=defaults["bucket_volatility_other"],
-            )
+                                with gr.Tab("Tax & Forecast Rules"):
+                                    with gr.Row():
+                                        inflation_rate = gr.Number(
+                                            label="Inflation Rate",
+                                            value=defaults["inflation_rate"],
+                                        )
+                                        default_bucket_expense_years = gr.Number(
+                                            label="Default Bucket Expense Years",
+                                            value=defaults["default_bucket_expense_years"],
+                                        )
+                                        auto_fund_shortfall = gr.Checkbox(
+                                            label="Auto-Fund Shortfall",
+                                            value=defaults["auto_fund_shortfall"],
+                                        )
 
-        gr.Markdown(
-            "Use `Return Model = simple` for fixed annual bucket returns. "
-            "Use `scenario_based` to apply the selected year-by-year scenario to bucketed accounts. "
-            "Use `monte_carlo` to simulate many randomized yearly bucket returns using the return inputs "
-            "as means and the volatility inputs as standard deviations."
-        )
+                                    with gr.Row():
+                                        return_model_type = gr.Dropdown(
+                                            label="Return Model",
+                                            choices=["simple", "scenario_based", "monte_carlo"],
+                                            value=defaults["return_model_type"],
+                                        )
+                                        return_scenario_type = gr.Dropdown(
+                                            label="Return Scenario",
+                                            choices=[
+                                                "base",
+                                                "conservative",
+                                                "optimistic",
+                                                "bad_first_5_years",
+                                            ],
+                                            value=defaults["return_scenario_type"],
+                                        )
+                                        tax_model = gr.Dropdown(
+                                            label="Tax Model",
+                                            choices=["effective_rate", "bracket_based"],
+                                            value=defaults["tax_model"],
+                                        )
+                                        tax_projection_mode = gr.Dropdown(
+                                            label="Tax Projection Mode",
+                                            choices=["static", "inflation_adjusted"],
+                                            value=defaults["tax_projection_mode"],
+                                        )
 
-        with gr.Row():
-            planned_annual_spending = gr.Number(
-                label="Planned Annual Spending",
-                value=defaults["planned_annual_spending"],
-            )
-            target_cash_reserve = gr.Number(
-                label="Target Cash Reserve",
-                value=defaults["target_cash_reserve"],
-            )
+                                    with gr.Row():
+                                        monte_carlo_simulations = gr.Number(
+                                            label="Monte Carlo Simulations",
+                                            value=defaults["monte_carlo_simulations"],
+                                            precision=0,
+                                        )
+                                        monte_carlo_seed = gr.Number(
+                                            label="Monte Carlo Seed",
+                                            value=defaults["monte_carlo_seed"],
+                                            precision=0,
+                                        )
+                                        monte_carlo_depletion_target_year = gr.Number(
+                                            label="Depletion Target Year",
+                                            value=defaults["monte_carlo_depletion_target_year"],
+                                            precision=0,
+                                        )
+                                        monte_carlo_depletion_target_age = gr.Number(
+                                            label="Depletion Target Age",
+                                            value=defaults["monte_carlo_depletion_target_age"],
+                                            precision=0,
+                                        )
 
-        with gr.Row():
-            tax_model = gr.Dropdown(
-                label="Tax Model",
-                choices=["effective_rate", "bracket_based"],
-                value=defaults["tax_model"],
-            )
-            tax_projection_mode = gr.Dropdown(
-                label="Tax Projection Mode",
-                choices=["static", "inflation_adjusted"],
-                value=defaults["tax_projection_mode"],
-            )
-            federal_effective_tax_rate = gr.Number(
-                label="Federal Effective Tax Rate",
-                value=defaults["federal_effective_tax_rate"],
-            )
-            state_effective_tax_rate = gr.Number(
-                label="State Effective Tax Rate",
-                value=defaults["state_effective_tax_rate"],
-            )
-        with gr.Row():
-            rmd_start_age = gr.Number(
-                label="RMD Start Age",
-                value=defaults["rmd_start_age"],
-                precision=0,
-            )
-            auto_fund_shortfall = gr.Checkbox(
-                label="Auto-Fund Shortfall",
-                value=defaults["auto_fund_shortfall"],
-            )
+                                    with gr.Row():
+                                        bucket_return_short_term = gr.Number(
+                                            label="Short-Term Return",
+                                            value=defaults["bucket_return_short_term"],
+                                        )
+                                        bucket_return_intermediate = gr.Number(
+                                            label="Intermediate Return",
+                                            value=defaults["bucket_return_intermediate"],
+                                        )
+                                        bucket_return_long_term = gr.Number(
+                                            label="Long-Term Return",
+                                            value=defaults["bucket_return_long_term"],
+                                        )
+                                        bucket_return_other = gr.Number(
+                                            label="Other/Fallback Return",
+                                            value=defaults["bucket_return_other"],
+                                        )
 
-        with gr.Row():
-            hsa_contribution_limit_self = gr.Number(
-                label="HSA Self Limit",
-                value=defaults["hsa_contribution_limit_self"],
-            )
-            hsa_contribution_limit_family = gr.Number(
-                label="HSA Family Limit",
-                value=defaults["hsa_contribution_limit_family"],
-            )
-            hsa_catch_up_amount = gr.Number(
-                label="HSA Catch-Up Amount",
-                value=defaults["hsa_catch_up_amount"],
-            )
+                                    with gr.Row():
+                                        bucket_volatility_short_term = gr.Number(
+                                            label="Short-Term Volatility",
+                                            value=defaults["bucket_volatility_short_term"],
+                                        )
+                                        bucket_volatility_intermediate = gr.Number(
+                                            label="Intermediate Volatility",
+                                            value=defaults["bucket_volatility_intermediate"],
+                                        )
+                                        bucket_volatility_long_term = gr.Number(
+                                            label="Long-Term Volatility",
+                                            value=defaults["bucket_volatility_long_term"],
+                                        )
+                                        bucket_volatility_other = gr.Number(
+                                            label="Other/Fallback Volatility",
+                                            value=defaults["bucket_volatility_other"],
+                                        )
 
-        with gr.Accordion("Withdrawal Priority Policy", open=False):
-            gr.Markdown(
-                "Bucket draw order is currently fixed as `short_term -> intermediate -> long_term -> other`. "
-                "These settings control how accounts are chosen within each bucket after any required RMDs."
-            )
-            with gr.Row():
-                use_withdrawal_priority_policy = gr.Checkbox(
-                    label="Use Withdrawal Priority Policy",
-                    value=defaults["use_withdrawal_priority_policy"],
-                )
-                withdrawal_tax_priority = gr.Dropdown(
-                    label="Tax Treatment Priority",
-                    choices=[
-                        "taxable_tax_deferred_tax_free",
-                        "tax_deferred_taxable_tax_free",
-                        "taxable_tax_free_tax_deferred",
-                    ],
-                    value=defaults["withdrawal_tax_priority"],
-                )
-            with gr.Row():
-                withdrawal_owner_priority = gr.Dropdown(
-                    label="Owner Priority",
-                    choices=[
-                        "older_first",
-                        "younger_first",
-                        "primary_first",
-                        "spouse_first",
-                        "pro_rata",
-                    ],
-                    value=defaults["withdrawal_owner_priority"],
-                )
-                withdrawal_account_type_priority = gr.Dropdown(
-                    label="Account Type Priority",
-                    choices=[
-                        "no_preference",
-                        "liquid_first",
-                        "retirement_first",
-                    ],
-                    value=defaults["withdrawal_account_type_priority"],
-                )
-            with gr.Row():
-                withdrawal_allocation_method = gr.Dropdown(
-                    label="Within-Priority Allocation",
-                    choices=["drain_one_then_next", "pro_rata"],
-                    value=defaults["withdrawal_allocation_method"],
-                )
-                roth_handling_policy = gr.Dropdown(
-                    label="Roth Handling",
-                    choices=["last_resort", "normal_priority"],
-                    value=defaults["roth_handling_policy"],
-                )
+                                    gr.Markdown(
+                                        "Use `Return Model = simple` for fixed annual bucket returns. "
+                                        "Use `scenario_based` for deterministic year-by-year scenarios. "
+                                        "Use `monte_carlo` for randomized yearly bucket returns based on "
+                                        "the return and volatility settings."
+                                    )
 
-        notes = gr.Textbox(label="Notes", value=defaults["notes"], lines=3)
+                                    with gr.Row():
+                                        federal_effective_tax_rate = gr.Number(
+                                            label="Federal Effective Tax Rate",
+                                            value=defaults["federal_effective_tax_rate"],
+                                        )
+                                        state_effective_tax_rate = gr.Number(
+                                            label="State Effective Tax Rate",
+                                            value=defaults["state_effective_tax_rate"],
+                                        )
+                                        hsa_contribution_limit_self = gr.Number(
+                                            label="HSA Self Limit",
+                                            value=defaults["hsa_contribution_limit_self"],
+                                        )
+                                        hsa_contribution_limit_family = gr.Number(
+                                            label="HSA Family Limit",
+                                            value=defaults["hsa_contribution_limit_family"],
+                                        )
+                                        hsa_catch_up_amount = gr.Number(
+                                            label="HSA Catch-Up Amount",
+                                            value=defaults["hsa_catch_up_amount"],
+                                        )
 
-        with gr.Accordion("People", open=True):
-            people = gr.Dataframe(
-                elem_id="people-table",
-                elem_classes=["numeric-table"],
-                headers=PEOPLE_HEADERS,
-                datatype=[
-                    "str", "str", "str", "number", "number", "number",
-                    "number", "str", "number", "str", "bool",
-                    "number", "str", "str", "bool", "str",
-                ],
-                value=defaults["people"],
-                interactive=True,
-            )
+                                    with gr.Accordion("Withdrawal Priority Policy", open=False):
+                                        gr.Markdown(
+                                            "Bucket draw order remains fixed as "
+                                            "`short_term -> intermediate -> long_term -> other`. "
+                                            "These settings choose which accounts get used inside each bucket."
+                                        )
+                                        with gr.Row():
+                                            use_withdrawal_priority_policy = gr.Checkbox(
+                                                label="Use Withdrawal Priority Policy",
+                                                value=defaults["use_withdrawal_priority_policy"],
+                                            )
+                                            withdrawal_tax_priority = gr.Dropdown(
+                                                label="Tax Treatment Priority",
+                                                choices=[
+                                                    "taxable_tax_deferred_tax_free",
+                                                    "tax_deferred_taxable_tax_free",
+                                                    "taxable_tax_free_tax_deferred",
+                                                ],
+                                                value=defaults["withdrawal_tax_priority"],
+                                            )
+                                        with gr.Row():
+                                            withdrawal_owner_priority = gr.Dropdown(
+                                                label="Owner Priority",
+                                                choices=[
+                                                    "older_first",
+                                                    "younger_first",
+                                                    "primary_first",
+                                                    "spouse_first",
+                                                    "pro_rata",
+                                                ],
+                                                value=defaults["withdrawal_owner_priority"],
+                                            )
+                                            withdrawal_account_type_priority = gr.Dropdown(
+                                                label="Account Type Priority",
+                                                choices=[
+                                                    "no_preference",
+                                                    "liquid_first",
+                                                    "retirement_first",
+                                                ],
+                                                value=defaults[
+                                                    "withdrawal_account_type_priority"
+                                                ],
+                                            )
+                                        with gr.Row():
+                                            withdrawal_allocation_method = gr.Dropdown(
+                                                label="Within-Priority Allocation",
+                                                choices=["drain_one_then_next", "pro_rata"],
+                                                value=defaults["withdrawal_allocation_method"],
+                                            )
+                                            roth_handling_policy = gr.Dropdown(
+                                                label="Roth Handling",
+                                                choices=["last_resort", "normal_priority"],
+                                                value=defaults["roth_handling_policy"],
+                                            )
 
-        with gr.Accordion("Buckets", open=False):
-            buckets = gr.Dataframe(
-                elem_id="buckets-table",
-                elem_classes=["numeric-table"],
-                headers=BUCKET_HEADERS,
-                datatype=["str", "str", "str", "str", "number", "str", "str"],
-                value=defaults["buckets"],
-                interactive=True,
-            )
+                                with gr.Tab("People"):
+                                    people = gr.Dataframe(
+                                        elem_id="people-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=PEOPLE_HEADERS,
+                                        datatype=[
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "number",
+                                            "number",
+                                            "number",
+                                            "str",
+                                            "number",
+                                            "str",
+                                            "bool",
+                                            "number",
+                                            "str",
+                                            "str",
+                                            "bool",
+                                            "str",
+                                        ],
+                                        value=defaults["people"],
+                                        interactive=True,
+                                    )
 
-        with gr.Accordion("Accounts", open=True):
-            accounts = gr.Dataframe(
-                elem_id="accounts-table",
-                elem_classes=["numeric-table"],
-                headers=ACCOUNT_HEADERS,
-                datatype=[
-                    "str", "str", "str", "str", "str", "str",
-                    "str", "number", "str", "bool", "bool", "bool",
-                ],
-                value=defaults["accounts"],
-                interactive=True,
-            )
+                                with gr.Tab("Accounts"):
+                                    accounts = gr.Dataframe(
+                                        elem_id="accounts-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=ACCOUNT_HEADERS,
+                                        datatype=[
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "str",
+                                            "bool",
+                                            "bool",
+                                            "bool",
+                                        ],
+                                        value=defaults["accounts"],
+                                        interactive=True,
+                                    )
 
-        with gr.Accordion("Cash Flows", open=True):
-            cash_flows = gr.Dataframe(
-                elem_id="cash-flows-table",
-                elem_classes=["numeric-table"],
-                headers=CASH_FLOW_HEADERS,
-                datatype=[
-                    "str", "str", "str", "str", "number",
-                    "number", "number", "str", "str", "str",
-                ],
-                value=defaults["cash_flows"],
-                interactive=True,
-            )
+                                with gr.Tab("Buckets"):
+                                    buckets = gr.Dataframe(
+                                        elem_id="buckets-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=BUCKET_HEADERS,
+                                        datatype=[
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "str",
+                                            "str",
+                                        ],
+                                        value=defaults["buckets"],
+                                        interactive=True,
+                                    )
 
-        with gr.Accordion("Holdings", open=False):
-            holdings = gr.Dataframe(
-                elem_id="holdings-table",
-                elem_classes=["numeric-table"],
-                headers=HOLDING_HEADERS,
-                datatype=[
-                    "str", "str", "str", "str", "str",
-                    "str", "str", "number", "str", "str",
-                ],
-                value=defaults["holdings"],
-                interactive=True,
-            )
+                                with gr.Tab("Cash Flows"):
+                                    cash_flows = gr.Dataframe(
+                                        elem_id="cash-flows-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=CASH_FLOW_HEADERS,
+                                        datatype=[
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "number",
+                                            "number",
+                                            "str",
+                                            "str",
+                                            "str",
+                                        ],
+                                        value=defaults["cash_flows"],
+                                        interactive=True,
+                                    )
 
-        with gr.Accordion("Actual Balances", open=False):
-            snapshots = gr.Dataframe(
-                elem_id="snapshots-table",
-                elem_classes=["numeric-table"],
-                headers=SNAPSHOT_HEADERS,
-                datatype=["str", "str", "str", "str", "str"],
-                value=defaults["snapshots"],
-                interactive=True,
-            )
+                                with gr.Tab("Holdings"):
+                                    holdings = gr.Dataframe(
+                                        elem_id="holdings-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=HOLDING_HEADERS,
+                                        datatype=[
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "str",
+                                            "str",
+                                        ],
+                                        value=defaults["holdings"],
+                                        interactive=True,
+                                    )
 
-        gr.Markdown("## Forecast Output")
-        forecast_summary = gr.Markdown("Run the forecast to see results.")
-        forecast_table = gr.Dataframe(
-            elem_id="forecast-table",
-            elem_classes=["numeric-table"],
-            headers=FORECAST_HEADERS,
-            datatype=["number"] + (["str"] * (len(FORECAST_HEADERS) - 1)),
-            interactive=False,
-        )
-        gr.Markdown("## Account Forecast")
-        account_forecast_table = gr.Dataframe(
-            elem_id="account-forecast-table",
-            elem_classes=["numeric-table"],
-            headers=ACCOUNT_FORECAST_HEADERS,
-            datatype=[
-                "number",
-                "str",
-                "str",
-                "str",
-                "number",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-            ],
-            interactive=False,
-        )
-        report_markdown_state = gr.State("")
-        with gr.Column(visible=False, elem_id="report-overlay") as report_overlay:
-            with gr.Column(elem_id="report-modal-card"):
-                with gr.Row():
-                    gr.Markdown("## Forecast Report")
-                    close_report_btn = gr.Button("Close", variant="secondary")
-                report_popup_markdown = gr.Markdown()
-                report_pdf_file = gr.File(
-                    label="Forecast Report PDF",
-                    interactive=False,
-                )
+                                with gr.Tab("Actual Balances"):
+                                    snapshots = gr.Dataframe(
+                                        elem_id="snapshots-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=SNAPSHOT_HEADERS,
+                                        datatype=["str", "str", "str", "str", "str"],
+                                        value=defaults["snapshots"],
+                                        interactive=True,
+                                    )
+
+                    with gr.Tab("Forecast"):
+                        with gr.Column(elem_id="forecast-panel"):
+                            gr.Markdown(
+                                "Run a forecast snapshot from the current case inputs. "
+                                "The results shown here feed the Report and Export tabs."
+                            )
+                            run_forecast_btn = gr.Button("Run Forecast", variant="primary")
+                            forecast_summary = gr.Markdown(
+                                "Run the forecast to see results."
+                            )
+                            with gr.Tabs():
+                                with gr.Tab("Household Forecast"):
+                                    forecast_table = gr.Dataframe(
+                                        elem_id="forecast-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=FORECAST_HEADERS,
+                                        datatype=["number"]
+                                        + (["str"] * (len(FORECAST_HEADERS) - 1)),
+                                        interactive=False,
+                                    )
+                                with gr.Tab("Account Forecast"):
+                                    account_forecast_table = gr.Dataframe(
+                                        elem_id="account-forecast-table",
+                                        elem_classes=["numeric-table"],
+                                        headers=ACCOUNT_FORECAST_HEADERS,
+                                        datatype=[
+                                            "number",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "number",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                            "str",
+                                        ],
+                                        interactive=False,
+                                    )
+
+                    with gr.Tab("Report"):
+                        with gr.Column(elem_id="report-panel"):
+                            gr.Markdown(
+                                "The report is generated from the latest successful forecast run."
+                            )
+                            report_markdown = gr.Markdown(default_report_message)
+                            report_pdf_file = gr.File(
+                                label="Forecast Report PDF",
+                                interactive=False,
+                            )
+
+                    with gr.Tab("Export"):
+                        with gr.Column(elem_id="export-panel"):
+                            gr.Markdown(
+                                "Export the current case workbook, preserving imported workbook formatting "
+                                "where possible and appending timestamped forecast tabs."
+                            )
+                            with gr.Row():
+                                export_mode = gr.Dropdown(
+                                    label="Export Mode",
+                                    choices=[
+                                        EXPORT_MODE_SAVE_UPDATED_COPY,
+                                        EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
+                                        EXPORT_MODE_NEW_FILE,
+                                    ],
+                                    value=EXPORT_MODE_SAVE_UPDATED_COPY,
+                                )
+                                export_directory = gr.Textbox(
+                                    label="Target Export Folder",
+                                    value=DEFAULT_EXPORT_DIRECTORY,
+                                )
+                            export_btn = gr.Button(
+                                "Export Workbook",
+                                variant="secondary",
+                            )
+                            export_file = gr.File(
+                                label="Exported Workbook",
+                                visible=False,
+                            )
+
+            with gr.Column(scale=3):
+                with gr.Column(elem_id="summary-rail"):
+                    gr.Markdown("### Current Case Snapshot")
+                    case_snapshot = gr.Markdown(
+                        _summary_rail_markdown(
+                            defaults,
+                            imported_path=None,
+                            forecast_summary="",
+                            report_pdf_path=None,
+                            export_path=None,
+                        )
+                    )
 
         inputs = [
             plan_id,
@@ -810,6 +708,16 @@ def build_ui() -> gr.Blocks:
             snapshots,
             status,
             imported_workbook_path,
+            case_snapshot,
+            forecast_table,
+            account_forecast_table,
+            forecast_summary,
+            report_markdown,
+            report_pdf_file,
+            latest_report_path,
+            latest_export_path,
+            latest_forecast_summary,
+            export_file,
         ]
 
         load_sample_btn.click(
@@ -823,32 +731,36 @@ def build_ui() -> gr.Blocks:
             outputs=ui_outputs,
         )
         run_forecast_btn.click(
-            fn=run_forecast_ui,
-            inputs=inputs,
+            fn=run_forecast_workspace_ui,
+            inputs=inputs + [imported_workbook_path, latest_export_path],
             outputs=[
                 forecast_table,
                 account_forecast_table,
                 forecast_summary,
-                status,
-                report_markdown_state,
-                report_popup_markdown,
+                report_markdown,
                 report_pdf_file,
-                view_report_btn,
+                status,
+                case_snapshot,
+                latest_report_path,
+                latest_forecast_summary,
             ],
         )
         export_btn.click(
-            fn=export_workbook_ui,
-            inputs=inputs + [export_mode, export_directory, imported_workbook_path],
-            outputs=[export_file, status],
-        )
-        view_report_btn.click(
-            fn=open_report_popup,
-            inputs=[report_markdown_state],
-            outputs=[report_overlay, report_popup_markdown],
-        )
-        close_report_btn.click(
-            fn=close_report_popup,
-            outputs=[report_overlay],
+            fn=export_workbook_workspace_ui,
+            inputs=inputs
+            + [
+                export_mode,
+                export_directory,
+                imported_workbook_path,
+                latest_forecast_summary,
+                latest_report_path,
+            ],
+            outputs=[
+                export_file,
+                status,
+                case_snapshot,
+                latest_export_path,
+            ],
         )
 
     return demo
@@ -856,83 +768,103 @@ def build_ui() -> gr.Blocks:
 
 def load_sample_case(sample_name: str):
     values = plan_to_ui_values(sample_plan(sample_name))
-    return _ui_output_tuple(
+    return _workspace_output_tuple(
         values,
-        f"Loaded sample case: `{sample_name or DEFAULT_SAMPLE_NAME}`.",
-        None,
+        status_message=f"Loaded sample case: `{sample_name or DEFAULT_SAMPLE_NAME}`.",
+        imported_path=None,
     )
 
 
 def load_workbook_case(path: str | None):
     if not path:
-        return _ui_output_tuple(
+        return _workspace_output_tuple(
             plan_to_ui_values(sample_plan()),
-            "No workbook selected.",
-            None,
+            status_message="No workbook selected.",
+            imported_path=None,
         )
+
     try:
         values = import_plan_to_ui(path)
-        return _ui_output_tuple(values, f"Imported workbook: `{path}`", path)
-    except Exception as exc:
-        sample = plan_to_ui_values(sample_plan())
-        return _ui_output_tuple(sample, f"Import failed: `{exc}`", None)
-
-
-def run_forecast_ui(*args):
-    try:
-        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args))
-        table, account_table, summary, report_markdown, report_pdf_path = forecast_with_report_for_ui(plan)
-        return (
-            table,
-            account_table,
-            summary,
-            f"Forecast completed successfully.\n\nReport saved to `{report_pdf_path}`",
-            report_markdown,
-            report_markdown,
-            report_pdf_path,
-            gr.update(interactive=True),
+        return _workspace_output_tuple(
+            values,
+            status_message=f"Imported workbook: `{path}`",
+            imported_path=path,
         )
     except Exception as exc:
-        return (
-            [],
-            [],
-            f"Forecast failed.\n\n`{exc}`",
-            f"Forecast failed: `{exc}`",
-            "",
-            "",
-            None,
-            gr.update(interactive=False),
+        return _workspace_output_tuple(
+            plan_to_ui_values(sample_plan()),
+            status_message=f"Import failed: `{exc}`",
+            imported_path=None,
         )
 
 
-def export_workbook_ui(*args):
-    try:
-        export_mode = args[-3]
-        export_directory = args[-2]
-        imported_workbook_path = args[-1]
-        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-3]))
-        path = export_plan_for_ui(
-            plan,
-            export_mode=export_mode or EXPORT_MODE_NEW_FILE,
-            export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
-            imported_workbook_path=imported_workbook_path,
-        )
-        return gr.update(value=path, visible=True), f"Workbook exported to `{path}`"
-    except Exception as exc:
-        return gr.update(value=None, visible=False), f"Export failed: `{exc}`"
+def run_forecast_workspace_ui(*args):
+    plan_args = args[: len(PLAN_UI_INPUT_KEYS)]
+    imported_path = args[-2]
+    export_path = args[-1]
+    values = UIPlanPayload.from_ordered_values(plan_args).as_dict()
+
+    (
+        forecast_table,
+        account_forecast_table,
+        forecast_summary,
+        status_message,
+        report_markdown,
+        report_pdf_path,
+    ) = run_forecast_ui(*plan_args)
+
+    case_snapshot = _summary_rail_markdown(
+        values,
+        imported_path=imported_path,
+        forecast_summary=forecast_summary if report_markdown else "",
+        report_pdf_path=report_pdf_path,
+        export_path=export_path,
+    )
+
+    return (
+        forecast_table,
+        account_forecast_table,
+        forecast_summary,
+        report_markdown or "Run the forecast to generate a report here.",
+        report_pdf_path,
+        status_message,
+        case_snapshot,
+        report_pdf_path,
+        forecast_summary if report_markdown else "",
+    )
 
 
-def open_report_popup(markdown: str):
-    if not markdown:
-        return gr.update(visible=False), "Run the forecast to generate a report."
-    return gr.update(visible=True), markdown
+def export_workbook_workspace_ui(*args):
+    plan_args = args[: len(PLAN_UI_INPUT_KEYS)]
+    export_mode = args[len(PLAN_UI_INPUT_KEYS)]
+    export_directory = args[len(PLAN_UI_INPUT_KEYS) + 1]
+    imported_path = args[len(PLAN_UI_INPUT_KEYS) + 2]
+    forecast_summary = args[len(PLAN_UI_INPUT_KEYS) + 3]
+    report_pdf_path = args[len(PLAN_UI_INPUT_KEYS) + 4]
+
+    values = UIPlanPayload.from_ordered_values(plan_args).as_dict()
+    export_file_update, status_message, export_path = export_workbook_ui(
+        *plan_args,
+        export_mode,
+        export_directory,
+        imported_path,
+    )
+    case_snapshot = _summary_rail_markdown(
+        values,
+        imported_path=imported_path,
+        forecast_summary=forecast_summary,
+        report_pdf_path=report_pdf_path,
+        export_path=export_path,
+    )
+    return export_file_update, status_message, case_snapshot, export_path
 
 
-def close_report_popup():
-    return gr.update(visible=False)
-
-
-def _ui_output_tuple(values: dict[str, object], status_message: str, imported_path: str | None):
+def _workspace_output_tuple(
+    values: dict[str, object],
+    *,
+    status_message: str,
+    imported_path: str | None,
+):
     return (
         values["plan_id"],
         values["household_name"],
@@ -982,6 +914,66 @@ def _ui_output_tuple(values: dict[str, object], status_message: str, imported_pa
         values["snapshots"],
         status_message,
         imported_path,
+        _summary_rail_markdown(
+            values,
+            imported_path=imported_path,
+            forecast_summary="",
+            report_pdf_path=None,
+            export_path=None,
+        ),
+        [],
+        [],
+        "Run the forecast to see results.",
+        "Run the forecast from the Forecast tab to generate a presentable report here.",
+        None,
+        None,
+        None,
+        "",
+        gr.update(value=None, visible=False),
+    )
+
+
+def _summary_rail_markdown(
+    values: dict[str, object],
+    *,
+    imported_path: str | None,
+    forecast_summary: str,
+    report_pdf_path: str | None,
+    export_path: str | None,
+) -> str:
+    summary_lines = [
+        f"- **Household:** {values['household_name']}",
+        f"- **Plan ID:** `{values['plan_id']}`",
+        f"- **Base Year:** {values['base_year']}",
+        f"- **Projection Years:** {values['projection_years']}",
+        f"- **Tax Model:** `{values['tax_model']}`",
+        f"- **Return Model:** `{values['return_model_type']}`",
+    ]
+
+    if imported_path:
+        summary_lines.append(f"- **Imported Workbook:** `{Path(imported_path).name}`")
+
+    if report_pdf_path:
+        summary_lines.append(f"- **Latest Report PDF:** `{Path(report_pdf_path).name}`")
+
+    if export_path:
+        summary_lines.append(f"- **Latest Export:** `{Path(export_path).name}`")
+
+    forecast_block = "No forecast run yet."
+    if forecast_summary:
+        forecast_lines = [line for line in forecast_summary.splitlines() if line.strip()]
+        forecast_block = "\n".join(f"- {line}" for line in forecast_lines[:6])
+
+    return (
+        "#### Case\n"
+        + "\n".join(summary_lines)
+        + "\n\n#### Latest Forecast\n"
+        + forecast_block
+        + "\n\n#### Workflow\n"
+        + "- Edit inputs in **Case Setup**.\n"
+        + "- Run a snapshot in **Forecast**.\n"
+        + "- Review the narrative in **Report**.\n"
+        + "- Save workbook outputs from **Export**."
     )
 
 

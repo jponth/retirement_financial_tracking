@@ -2039,12 +2039,12 @@ def test_forecast_report_markdown_and_pdf_generation(tmp_path):
     assert Path(pdf_path).stat().st_size > 0
 
 
-def test_build_ui_instantiates_with_report_popup():
+def test_workspace_build_ui_instantiates():
     demo = app_module.build_ui()
     assert demo is not None
 
 
-def test_simple_spa_entrypoint_reuses_current_build_ui():
+def test_simple_spa_entrypoint_instantiates():
     demo = simple_spa_module.build_ui()
     assert demo is not None
 
