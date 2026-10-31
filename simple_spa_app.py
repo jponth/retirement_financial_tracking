@@ -3,6 +3,7 @@ from __future__ import annotations
 import gradio as gr
 
 from retirement_financial_tracking import load_app_metadata
+from retirement_financial_tracking.ui_theme import MOJAVE_SAGE_CSS, mojave_sage_theme
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
     DEFAULT_EXPORT_DIRECTORY,
@@ -145,7 +146,9 @@ ACCOUNT_FORECAST_HEADERS = [
 ]
 
 
-CSS = """
+CSS = (
+    MOJAVE_SAGE_CSS
+    + """
     .numeric-table th,
     .numeric-table td,
     .numeric-table .header-cell,
@@ -308,7 +311,7 @@ CSS = """
         inset: 0;
         z-index: 1000;
         padding: 3vh 4vw;
-        background: rgba(15, 23, 42, 0.55);
+        background: rgba(51, 47, 34, 0.48);
         overflow-y: auto;
     }
 
@@ -317,8 +320,9 @@ CSS = """
         margin: 0 auto;
         padding: 24px 28px;
         border-radius: 18px;
-        background: white;
-        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+        background: #F8F3E8;
+        border: 1px solid #D8D1BB;
+        box-shadow: 0 24px 54px rgba(70, 65, 47, 0.24);
     }
 
     #report-modal-card table {
@@ -326,7 +330,13 @@ CSS = """
         overflow-x: auto;
         white-space: nowrap;
     }
+
+    #report-modal-card h2,
+    #report-modal-card h3 {
+        color: #332F22;
+    }
 """
+)
 
 
 def build_ui() -> gr.Blocks:
@@ -986,4 +996,4 @@ def _ui_output_tuple(values: dict[str, object], status_message: str, imported_pa
 
 
 if __name__ == "__main__":
-    build_ui().launch(css=CSS)
+    build_ui().launch(css=CSS, theme=mojave_sage_theme())

@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 import app as app_module
+import combined_ui as combined_ui_module
 import simple_spa as simple_spa_module
 import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
@@ -2047,6 +2048,15 @@ def test_workspace_build_ui_instantiates():
 def test_simple_spa_entrypoint_instantiates():
     demo = simple_spa_module.build_ui()
     assert demo is not None
+
+
+def test_combined_ui_builds_with_both_paths():
+    fastapi_app = combined_ui_module.build_combined_app()
+    route_paths = {route.path for route in fastapi_app.routes}
+
+    assert "/" in route_paths
+    assert "/workspace" in route_paths
+    assert "/simple" in route_paths
 
 
 def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):

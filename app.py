@@ -5,6 +5,14 @@ from pathlib import Path
 import gradio as gr
 
 from retirement_financial_tracking import load_app_metadata
+from retirement_financial_tracking.ui_theme import (
+    SAGE_PANEL_BACKGROUND,
+    SAGE_PANEL_BORDER,
+    SAGE_PANEL_SHADOW,
+    SAGE_RAIL_BACKGROUND,
+    SAGE_RAIL_BORDER,
+    mojave_sage_theme,
+)
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_EXPORT_DIRECTORY,
     DEFAULT_SAMPLE_NAME,
@@ -36,35 +44,52 @@ from simple_spa_app import (
 
 CSS = (
     SIMPLE_SPA_CSS
-    + """
-    #workspace-shell {
+    + f"""
+    #workspace-shell {{
         gap: 1.5rem;
-    }
+    }}
 
-    #workspace-shell > .gr-column:first-child {
+    #workspace-shell > .gr-column:first-child {{
         min-width: 0;
-    }
+    }}
 
-    #summary-rail {
-        background: #f8fafc;
-        border: 1px solid #dbe4ee;
-        border-radius: 14px;
-        padding: 1rem;
-    }
+    #summary-rail {{
+        background: {SAGE_RAIL_BACKGROUND};
+        border: 1px solid {SAGE_RAIL_BORDER};
+        border-radius: 18px;
+        padding: 1.1rem;
+        box-shadow: 0 12px 28px {SAGE_PANEL_SHADOW};
+    }}
 
-    #summary-rail h3 {
+    #summary-rail h3 {{
         margin-bottom: 0.5rem;
-    }
+    }}
+
+    #summary-rail p,
+    #summary-rail li {{
+        color: #46412F;
+    }}
 
     #report-panel,
     #forecast-panel,
     #export-panel,
-    #case-setup-panel {
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 1rem;
-        background: white;
-    }
+    #case-setup-panel {{
+        border: 1px solid {SAGE_PANEL_BORDER};
+        border-radius: 18px;
+        padding: 1.1rem;
+        background: {SAGE_PANEL_BACKGROUND};
+        box-shadow: 0 14px 30px {SAGE_PANEL_SHADOW};
+    }}
+
+    #report-panel .tab-nav,
+    #forecast-panel .tab-nav,
+    #case-setup-panel .tab-nav {{
+        background: rgba(255, 250, 241, 0.82);
+    }}
+
+    #workspace-shell .gr-button {{
+        box-shadow: 0 3px 10px rgba(70, 65, 47, 0.08);
+    }}
 """
 )
 
@@ -121,8 +146,10 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title=metadata.product_display_name) as demo:
         gr.Markdown(f"# {metadata.product_display_name}")
         gr.Markdown(
-            "Use this workspace UI for a cleaner case flow across setup, forecast, report, and export. "
-            "If you want the original everything-on-one-page operator console, launch `simple_spa.py`."
+            "An application to support financial forecasting, tracking and plan actions. "
+            "This application does not store any information on its servers. You're responsible "
+            "to export the output (an Excel file), after you have performed the forecasting. "
+            "You take 100% responsibility of your financial matters and the no one else is responsible."
         )
 
         status = gr.Markdown("Ready.")
@@ -978,4 +1005,4 @@ def _summary_rail_markdown(
 
 
 if __name__ == "__main__":
-    build_ui().launch(css=CSS)
+    build_ui().launch(css=CSS, theme=mojave_sage_theme())

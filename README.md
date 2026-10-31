@@ -144,7 +144,7 @@ The code is structured around an internal validated model, while allowing user d
 
 ## UI modes
 
-The project now has two Gradio entrypoints:
+The project now has three UI entrypoints:
 
 - `app.py`
   - the newer workspace-style UI
@@ -154,6 +154,10 @@ The project now has two Gradio entrypoints:
   - the preserved single-page power-user UI
   - keeps the old "everything on one page" operator-console workflow intact
   - launches the preserved implementation in `simple_spa_app.py`
+- `combined_ui.py`
+  - serves both UIs from one process
+  - mounts the workspace UI at `/workspace`
+  - mounts the simple one-page UI at `/simple`
 
 ### Workspace UI (`app.py`)
 
@@ -280,6 +284,17 @@ Run the simple SPA with:
 ```bash
 .venv/bin/python simple_spa.py
 ```
+
+Run both UIs from one server with:
+
+```bash
+.venv/bin/python combined_ui.py
+```
+
+Then open either:
+
+- `http://127.0.0.1:7860/workspace`
+- `http://127.0.0.1:7860/simple`
 
 ## Tests
 
