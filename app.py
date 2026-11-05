@@ -104,7 +104,7 @@ def run_forecast_ui(*args):
             table,
             account_table,
             summary,
-            f"Forecast completed successfully.\n\nReport saved to `{report_pdf_path}`",
+            "Forecast completed successfully.",
             report_markdown,
             report_pdf_path,
         )
@@ -131,7 +131,7 @@ def export_workbook_ui(*args):
             export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
             imported_workbook_path=imported_workbook_path,
         )
-        return gr.update(value=path, visible=True), f"Workbook exported to `{path}`", path
+        return gr.update(value=path, visible=True), "Workbook exported successfully.", path
     except Exception as exc:
         return gr.update(value=None, visible=False), f"Export failed: `{exc}`", None
 
@@ -814,7 +814,7 @@ def load_workbook_case(path: str | None):
         values = import_plan_to_ui(path)
         return _workspace_output_tuple(
             values,
-            status_message=f"Imported workbook: `{path}`",
+            status_message="Imported workbook successfully.",
             imported_path=path,
         )
     except Exception as exc:

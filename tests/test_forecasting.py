@@ -2076,4 +2076,4 @@ def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):
 
     result = app_module.run_forecast_ui(*[payload[key] for key in PLAN_UI_INPUT_KEYS])
 
-    assert result[3] == "Forecast completed successfully.\n\nReport saved to `/tmp/sample_report.pdf`"
+    assert result[3] == "Forecast completed successfully."

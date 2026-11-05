@@ -52,7 +52,12 @@ def build_combined_app() -> FastAPI:
 
 
 def main() -> None:
-    uvicorn.run(build_combined_app(), host="127.0.0.1", port=7860)
+    uvicorn.run(
+        build_combined_app(),
+        host="127.0.0.1",
+        port=7860,
+        timeout_graceful_shutdown=0,
+    )
 
 
 if __name__ == "__main__":
