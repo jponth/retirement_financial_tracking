@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi import Request
@@ -35,6 +37,13 @@ class SessionTokenPayload(BaseModel):
     token: str
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_combined_app() -> FastAPI:
     metadata = load_app_metadata()
     clerk_settings = ClerkSettings.from_env()
@@ -63,6 +72,10 @@ def build_combined_app() -> FastAPI:
     @shell.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
         return RedirectResponse(url=f"{WORKSPACE_PATH}/")
+
+    @shell.get("/healthz", include_in_schema=False)
+    def healthz() -> JSONResponse:
+        return JSONResponse({"ok": True})
 
     @shell.get("/sign-in", include_in_schema=False, response_class=HTMLResponse)
     def sign_in(request: Request, return_url: str | None = None):
@@ -100,7 +113,7 @@ def build_combined_app() -> FastAPI:
             max_age=clerk_settings.app_session_ttl_seconds,
             httponly=True,
             samesite="lax",
-            secure=False,
+            secure=_env_flag("APP_COOKIE_SECURE", default=False),
             path="/",
         )
         return response
@@ -148,8 +161,8 @@ def build_combined_app() -> FastAPI:
 def main() -> None:
     uvicorn.run(
         build_combined_app(),
-        host="127.0.0.1",
-        port=7860,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "7860")),
         timeout_graceful_shutdown=0,
     )
 

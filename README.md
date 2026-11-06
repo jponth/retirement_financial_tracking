@@ -321,6 +321,42 @@ Notes:
 - the standalone launchers `app.py` and `simple_spa.py` remain direct local-dev entrypoints and are not wrapped by Clerk
 - `combined_ui.py` is the launcher to use when you want browser auth in front of both UIs
 
+## Railway deployment
+
+The repo is now set up so Railway can run the combined launcher directly.
+
+Files relevant to Railway:
+
+- `combined_ui.py`
+  - binds to `0.0.0.0`
+  - reads `PORT` from the environment
+  - exposes `GET /healthz`
+- `Procfile`
+  - starts the app with `python combined_ui.py`
+
+Recommended Railway environment variables:
+
+- `PORT`
+  - Railway usually provides this automatically
+- `APP_COOKIE_SECURE=1`
+  - recommended for HTTPS deployments so the app session cookie is marked secure
+- `CLERK_ENABLED=1`
+- `CLERK_PUBLISHABLE_KEY=<your Clerk publishable key>`
+- `CLERK_JWKS_URL=<your Clerk JWKS URL>`
+- optional:
+  - `CLERK_JWT_ISSUER=<expected issuer>`
+  - `CLERK_JWT_AUDIENCE=<expected audience>`
+  - `CLERK_AFTER_SIGN_IN_URL=/workspace/`
+  - `CLERK_SESSION_COOKIE=rft_clerk_session`
+
+Notes for production:
+
+- workbook exports and report PDFs are generated as transient download artifacts rather than persistent project-folder files
+- the current authenticated app session store in `combined_ui.py` is in memory, so the safest first deployment shape is a single Railway instance
+- if you later scale beyond one instance, move app-session storage out of process or switch to a signed-cookie design
+
+Once deployed, expose the Clerk-protected combined app rather than the direct `app.py` or `simple_spa.py` launchers.
+
 ## Tests
 
 The test suite covers:
