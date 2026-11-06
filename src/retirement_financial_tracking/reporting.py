@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 import re
+import tempfile
 
 from fpdf import FPDF
 
@@ -14,9 +15,6 @@ from retirement_financial_tracking.domain.models import (
     HouseholdPlan,
     TaxTreatment,
 )
-
-
-DEFAULT_REPORT_DIRECTORY = Path(__file__).resolve().parents[2] / "exports"
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +199,7 @@ def generate_report_assets(
         source_workbook_name=source_workbook_name,
     )
     markdown = render_report_markdown(report)
-    report_directory = Path(output_directory) if output_directory else DEFAULT_REPORT_DIRECTORY
+    report_directory = Path(output_directory) if output_directory else _transient_report_directory()
     pdf_path = export_report_pdf(
         report,
         output_path=report_directory / _report_filename(plan, timestamp),
@@ -386,6 +384,12 @@ def _report_filename(plan: HouseholdPlan, timestamp: str) -> str:
     slug = _slugify(plan.household_name or plan.plan_id or "forecast-report")
     compact_timestamp = datetime.strptime(timestamp, "%d-%b-%Y %I:%M:%S %p").strftime("%d-%b-%y-%H%M%S")
     return f"{slug}_forecast_report_{compact_timestamp}.pdf"
+
+
+def _transient_report_directory() -> Path:
+    directory = Path(tempfile.gettempdir()) / "retirement_financial_tracking_downloads"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def _slugify(value: str) -> str:

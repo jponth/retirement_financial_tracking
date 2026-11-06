@@ -53,8 +53,6 @@ from retirement_financial_tracking.reporting import (
 from retirement_financial_tracking.services.forecasting import generate_forecast
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
-    EXPORT_MODE_SAVE_UPDATED_COPY,
-    EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
     PLAN_UI_INPUT_KEYS,
     UIPlanPayload,
     export_plan_for_ui,
@@ -1650,7 +1648,7 @@ def test_forecast_replenishes_bucket_chain_to_target_floor():
     assert household_row.total_ending_assets == Decimal("60.00")
 
 
-def test_export_plan_for_ui_writes_into_repo_exports_folder():
+def test_export_plan_for_ui_writes_transient_download_file():
     plan = HouseholdPlan(
         plan_id="case-export-path",
         household_name="Export Household",
@@ -1671,13 +1669,13 @@ def test_export_plan_for_ui_writes_into_repo_exports_folder():
     try:
         assert path.name.startswith("case-export-path_")
         assert path.suffix == ".xlsx"
-        assert path.parent.name == "exports"
+        assert path.parent.name == "retirement_financial_tracking_downloads"
         assert path.exists()
     finally:
         path.unlink(missing_ok=True)
 
 
-def test_export_plan_for_ui_can_save_updated_copy_next_to_imported_workbook(tmp_path):
+def test_export_plan_for_ui_uses_imported_workbook_name_for_transient_download(tmp_path):
     plan = HouseholdPlan(
         plan_id="case-export-copy",
         household_name="Export Household",
@@ -1699,51 +1697,14 @@ def test_export_plan_for_ui_can_save_updated_copy_next_to_imported_workbook(tmp_
     path = Path(
         export_plan_for_ui(
             plan,
-            export_mode=EXPORT_MODE_SAVE_UPDATED_COPY,
             imported_workbook_path=str(source_path),
-            export_directory=str(tmp_path),
         )
     )
 
     try:
-        assert path.parent == tmp_path
-        assert path.name == "my_case_updated.xlsx"
-        assert path.exists()
-    finally:
-        path.unlink(missing_ok=True)
-        source_path.unlink(missing_ok=True)
-
-
-def test_export_plan_for_ui_can_update_imported_workbook_in_place(tmp_path):
-    plan = HouseholdPlan(
-        plan_id="case-export-update",
-        household_name="Export Household",
-        base_year=2026,
-        settings=HouseholdSettings(),
-        people=[
-            Person(
-                person_id="p1",
-                role=PersonRole.PRIMARY,
-                display_name="Taylor",
-                birth_year=1970,
-            ),
-        ],
-    )
-
-    source_path = tmp_path / "my_case.xlsx"
-    export_case_workbook(source_path, plan)
-
-    path = Path(
-        export_plan_for_ui(
-            plan,
-            export_mode=EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
-            imported_workbook_path=str(source_path),
-            export_directory=str(tmp_path / "out"),
-        )
-    )
-
-    try:
-        assert path == (tmp_path / "out" / "my_case.xlsx")
+        assert path.parent.name == "retirement_financial_tracking_downloads"
+        assert path.name.startswith("my_case_")
+        assert path.suffix == ".xlsx"
         assert path.exists()
     finally:
         path.unlink(missing_ok=True)
@@ -2247,4 +2208,4 @@ def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):
 
     result = app_module.run_forecast_ui(*[payload[key] for key in PLAN_UI_INPUT_KEYS])
 
-    assert result[3] == "Forecast completed successfully."
+    assert result[3] == "Forecast completed successfully. Report PDF is ready to download."

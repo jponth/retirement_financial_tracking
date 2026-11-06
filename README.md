@@ -198,11 +198,7 @@ The preserved simple SPA supports:
 - viewing forecast summary information including depletion timing, tax model, tax projection mode, and Monte Carlo summary lines
 - opening a presentable forecast report in the app as a popup markdown view
 - downloading a PDF rendition of that same forecast report from the app
-- exporting a workbook using one of three modes:
-  - `save_updated_copy`
-  - `update_imported_workbook`
-  - `new_file`
-- choosing the target export folder, defaulting to the repo-local `exports/` directory
+- generating transient workbook downloads directly in the browser instead of saving persistent server-side export files
 - preserving an existing `Accounts` sheet from an imported workbook instead of rewriting it
 - adding forecast output as timestamped sheets such as:
   - `Forecast-Sumry-22-Oct-26-114533`
@@ -266,6 +262,7 @@ Workbook import for tabular sheets is header-name-based rather than position-bas
 When exporting from an existing workbook:
 
 - `Accounts` is left untouched if the sheet already exists
+- the current export is generated as a transient download artifact rather than being stored permanently in a repo-local export folder
 - forecast outputs are added as new timestamped sheets:
   - `Forecast-Sumry-<DD-Mon-YY-HHMMSS>`
   - `Forecast-Amts-<DD-Mon-YY-HHMMSS>`
@@ -312,7 +309,7 @@ Optional:
 - `CLERK_JWT_ISSUER=<expected issuer>` if you want issuer validation
 - `CLERK_JWT_AUDIENCE=<expected audience>` if you want audience validation
 - `CLERK_AFTER_SIGN_IN_URL=/workspace/`
-- `CLERK_SESSION_COOKIE=__session`
+- `CLERK_SESSION_COOKIE=rft_clerk_session`
 
 When enabled:
 

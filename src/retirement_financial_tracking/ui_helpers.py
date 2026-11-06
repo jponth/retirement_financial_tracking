@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
+import tempfile
 from typing import Any, Mapping, Sequence
 
 from retirement_financial_tracking.domain.models import (
@@ -41,10 +42,6 @@ from retirement_financial_tracking.services import generate_forecast
 
 
 DEFAULT_SAMPLE_NAME = "2-Bucket Sample"
-EXPORT_MODE_NEW_FILE = "new_file"
-EXPORT_MODE_SAVE_UPDATED_COPY = "save_updated_copy"
-EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK = "update_imported_workbook"
-DEFAULT_EXPORT_DIRECTORY = str(Path(__file__).resolve().parents[2] / "exports")
 PLAN_UI_SCALAR_KEYS = [
     "plan_id",
     "household_name",
@@ -981,15 +978,11 @@ def _age_reference_person(plan: HouseholdPlan) -> Person | None:
 
 def export_plan_for_ui(
     plan: HouseholdPlan,
-    export_mode: str = EXPORT_MODE_NEW_FILE,
     imported_workbook_path: str | None = None,
-    export_directory: str | None = None,
 ) -> str:
-    path = _resolve_export_path(
+    path = _resolve_transient_export_path(
         plan=plan,
-        export_mode=export_mode,
         imported_workbook_path=imported_workbook_path,
-        export_directory=export_directory,
     )
     forecast = generate_forecast(
         plan,
@@ -1007,30 +1000,19 @@ def export_plan_for_ui(
     return str(path)
 
 
-def _resolve_export_path(
-    *,
-    plan: HouseholdPlan,
-    export_mode: str,
-    imported_workbook_path: str | None,
-    export_directory: str | None,
-) -> Path:
-    target_directory = Path(export_directory or DEFAULT_EXPORT_DIRECTORY)
+def _resolve_transient_export_path(*, plan: HouseholdPlan, imported_workbook_path: str | None) -> Path:
+    target_directory = Path(tempfile.gettempdir()) / "retirement_financial_tracking_downloads"
     target_directory.mkdir(parents=True, exist_ok=True)
-    imported_name = _imported_workbook_name(imported_workbook_path)
-
-    if export_mode == EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK and imported_name:
-        return target_directory / imported_name
-
-    if export_mode == EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK:
-        raise ValueError("No imported workbook is available to update")
-
-    if export_mode == EXPORT_MODE_SAVE_UPDATED_COPY and imported_name:
-        source_path = target_directory / imported_name
-        suffix = source_path.suffix or ".xlsx"
-        return _next_available_sibling_path(source_path, f"{source_path.stem}_updated", suffix)
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return target_directory / f"{plan.plan_id or 'retirement_case'}_{timestamp}.xlsx"
+    imported_name = _imported_workbook_name(imported_workbook_path)
+    if imported_name:
+        source_path = Path(imported_name)
+        stem = source_path.stem or "retirement_case"
+        suffix = source_path.suffix or ".xlsx"
+    else:
+        stem = _slugify_filename(plan.plan_id or plan.household_name or "retirement_case")
+        suffix = ".xlsx"
+    return target_directory / f"{stem}_{timestamp}{suffix}"
 
 
 def _imported_workbook_name(imported_workbook_path: str | None) -> str | None:
@@ -1042,16 +1024,10 @@ def _imported_workbook_name(imported_workbook_path: str | None) -> str | None:
     return f"{path.name}.xlsx"
 
 
-def _next_available_sibling_path(source_path: Path, stem_base: str, suffix: str) -> Path:
-    candidate = source_path.with_name(f"{stem_base}{suffix}")
-    if not candidate.exists():
-        return candidate
-    counter = 2
-    while True:
-        candidate = source_path.with_name(f"{stem_base}_{counter}{suffix}")
-        if not candidate.exists():
-            return candidate
-        counter += 1
+def _slugify_filename(value: str) -> str:
+    safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in value.strip())
+    compact = "_".join(part for part in safe.split("_") if part)
+    return compact or "retirement_case"
 
 
 def _parse_people(rows: list[list[object]]) -> list[Person]:

@@ -6,10 +6,6 @@ from retirement_financial_tracking import load_app_metadata
 from retirement_financial_tracking.ui_theme import MOJAVE_SAGE_CSS, mojave_sage_theme
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
-    DEFAULT_EXPORT_DIRECTORY,
-    EXPORT_MODE_NEW_FILE,
-    EXPORT_MODE_SAVE_UPDATED_COPY,
-    EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
     UIPlanPayload,
     export_plan_for_ui,
     forecast_with_report_for_ui,
@@ -418,22 +414,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 variant="secondary",
                 interactive=False,
             )
-            export_mode = gr.Dropdown(
-                label="Export Mode",
-                choices=[
-                    EXPORT_MODE_SAVE_UPDATED_COPY,
-                    EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
-                    EXPORT_MODE_NEW_FILE,
-                ],
-                value=EXPORT_MODE_SAVE_UPDATED_COPY,
-            )
             export_btn = gr.Button("Export Workbook", variant="secondary")
-
-        with gr.Row():
-            export_directory = gr.Textbox(
-                label="Target Export Folder",
-                value=DEFAULT_EXPORT_DIRECTORY,
-            )
 
         export_file = gr.File(
             label="Exported Workbook",
@@ -768,11 +749,11 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 with gr.Row():
                     gr.Markdown("## Forecast Report")
                     close_report_btn = gr.Button("Close", variant="secondary")
-                report_popup_markdown = gr.Markdown()
                 report_pdf_file = gr.File(
                     label="Forecast Report PDF",
                     interactive=False,
                 )
+                report_popup_markdown = gr.Markdown()
 
         inputs = [
             plan_id,
@@ -900,7 +881,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
         )
         export_btn.click(
             fn=export_workbook_ui,
-            inputs=inputs + [export_mode, export_directory, imported_workbook_path],
+            inputs=inputs + [imported_workbook_path],
             outputs=[export_file, status],
         )
         view_report_btn.click(
@@ -948,7 +929,7 @@ def run_forecast_ui(*args):
             table,
             account_table,
             summary,
-            "Forecast completed successfully.",
+            "Forecast completed successfully. Report PDF is ready to download.",
             report_markdown,
             report_markdown,
             report_pdf_path,
@@ -969,17 +950,13 @@ def run_forecast_ui(*args):
 
 def export_workbook_ui(*args):
     try:
-        export_mode = args[-3]
-        export_directory = args[-2]
         imported_workbook_path = args[-1]
-        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-3]))
+        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-1]))
         path = export_plan_for_ui(
             plan,
-            export_mode=export_mode or EXPORT_MODE_NEW_FILE,
-            export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
             imported_workbook_path=imported_workbook_path,
         )
-        return gr.update(value=path, visible=True), "Workbook exported successfully."
+        return gr.update(value=path, visible=True), "Workbook is ready to download."
     except Exception as exc:
         return gr.update(value=None, visible=False), f"Export failed: `{exc}`"
 

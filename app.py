@@ -14,11 +14,7 @@ from retirement_financial_tracking.ui_theme import (
     mojave_sage_theme,
 )
 from retirement_financial_tracking.ui_helpers import (
-    DEFAULT_EXPORT_DIRECTORY,
     DEFAULT_SAMPLE_NAME,
-    EXPORT_MODE_NEW_FILE,
-    EXPORT_MODE_SAVE_UPDATED_COPY,
-    EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
     PLAN_UI_INPUT_KEYS,
     UIPlanPayload,
     export_plan_for_ui,
@@ -167,7 +163,7 @@ def run_forecast_ui(*args):
             table,
             account_table,
             summary,
-            "Forecast completed successfully.",
+            "Forecast completed successfully. Report PDF is ready to download.",
             report_markdown,
             report_pdf_path,
         )
@@ -184,17 +180,13 @@ def run_forecast_ui(*args):
 
 def export_workbook_ui(*args):
     try:
-        export_mode = args[-3]
-        export_directory = args[-2]
         imported_workbook_path = args[-1]
-        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-3]))
+        plan = ui_values_to_plan(UIPlanPayload.from_ordered_values(args[:-1]))
         path = export_plan_for_ui(
             plan,
-            export_mode=export_mode or EXPORT_MODE_NEW_FILE,
-            export_directory=export_directory or DEFAULT_EXPORT_DIRECTORY,
             imported_workbook_path=imported_workbook_path,
         )
-        return gr.update(value=path, visible=True), "Workbook exported successfully.", path
+        return gr.update(value=path, visible=True), "Workbook is ready to download.", path
     except Exception as exc:
         return gr.update(value=None, visible=False), f"Export failed: `{exc}`", None
 
@@ -672,32 +664,19 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                             gr.Markdown(
                                 "The report is generated from the latest successful forecast run."
                             )
-                            report_markdown = gr.Markdown(default_report_message)
                             report_pdf_file = gr.File(
                                 label="Forecast Report PDF",
                                 interactive=False,
                             )
+                            report_markdown = gr.Markdown(default_report_message)
 
                     with gr.Tab("Export"):
                         with gr.Column(elem_id="export-panel"):
                             gr.Markdown(
-                                "Export the current case workbook, preserving imported workbook formatting "
-                                "where possible and appending timestamped forecast tabs."
+                                "Generate a fresh workbook download from the current case inputs. "
+                                "Imported workbook formatting is preserved where possible, but files are "
+                                "generated transiently for download instead of being stored on the server."
                             )
-                            with gr.Row():
-                                export_mode = gr.Dropdown(
-                                    label="Export Mode",
-                                    choices=[
-                                        EXPORT_MODE_SAVE_UPDATED_COPY,
-                                        EXPORT_MODE_UPDATE_IMPORTED_WORKBOOK,
-                                        EXPORT_MODE_NEW_FILE,
-                                    ],
-                                    value=EXPORT_MODE_SAVE_UPDATED_COPY,
-                                )
-                                export_directory = gr.Textbox(
-                                    label="Target Export Folder",
-                                    value=DEFAULT_EXPORT_DIRECTORY,
-                                )
                             export_btn = gr.Button(
                                 "Export Workbook",
                                 variant="secondary",
@@ -859,8 +838,6 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
             fn=export_workbook_workspace_ui,
             inputs=inputs
             + [
-                export_mode,
-                export_directory,
                 imported_workbook_path,
                 latest_forecast_summary,
                 latest_report_path,
@@ -946,17 +923,13 @@ def run_forecast_workspace_ui(*args):
 
 def export_workbook_workspace_ui(*args):
     plan_args = args[: len(PLAN_UI_INPUT_KEYS)]
-    export_mode = args[len(PLAN_UI_INPUT_KEYS)]
-    export_directory = args[len(PLAN_UI_INPUT_KEYS) + 1]
-    imported_path = args[len(PLAN_UI_INPUT_KEYS) + 2]
-    forecast_summary = args[len(PLAN_UI_INPUT_KEYS) + 3]
-    report_pdf_path = args[len(PLAN_UI_INPUT_KEYS) + 4]
+    imported_path = args[len(PLAN_UI_INPUT_KEYS)]
+    forecast_summary = args[len(PLAN_UI_INPUT_KEYS) + 1]
+    report_pdf_path = args[len(PLAN_UI_INPUT_KEYS) + 2]
 
     values = UIPlanPayload.from_ordered_values(plan_args).as_dict()
     export_file_update, status_message, export_path = export_workbook_ui(
         *plan_args,
-        export_mode,
-        export_directory,
         imported_path,
     )
     case_snapshot = _summary_rail_markdown(
