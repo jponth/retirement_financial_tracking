@@ -45,6 +45,69 @@ from simple_spa_app import (
 CSS = (
     SIMPLE_SPA_CSS
     + f"""
+    #app-topbar {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.35rem;
+    }}
+
+    #app-topbar h1 {{
+        margin: 0;
+        line-height: 1.15;
+    }}
+
+    #auth-utility-bar {{
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }}
+
+    #auth-utility-bar a {{
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.5rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid {SAGE_PANEL_BORDER};
+        background: rgba(255, 250, 241, 0.88);
+        color: #4D4A37;
+        text-decoration: none;
+        font-size: 0.95rem;
+        box-shadow: 0 3px 10px rgba(70, 65, 47, 0.06);
+    }}
+
+    #auth-utility-bar a:hover {{
+        background: rgba(232, 228, 214, 0.96);
+    }}
+
+    #simple-ui-corner-link {{
+        position: fixed;
+        left: 1rem;
+        bottom: 1rem;
+        z-index: 999;
+    }}
+
+    #simple-ui-corner-link a {{
+        display: inline-flex;
+        align-items: center;
+        padding: 0.38rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid {SAGE_PANEL_BORDER};
+        background: rgba(248, 243, 232, 0.92);
+        color: #5A5642;
+        text-decoration: none;
+        font-size: 0.84rem;
+        box-shadow: 0 3px 10px rgba(70, 65, 47, 0.08);
+    }}
+
+    #simple-ui-corner-link a:hover {{
+        background: rgba(232, 228, 214, 0.98);
+    }}
+
     #workspace-shell {{
         gap: 1.5rem;
     }}
@@ -136,7 +199,7 @@ def export_workbook_ui(*args):
         return gr.update(value=None, visible=False), f"Export failed: `{exc}`", None
 
 
-def build_ui() -> gr.Blocks:
+def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
     default_report_message = (
@@ -144,7 +207,27 @@ def build_ui() -> gr.Blocks:
     )
 
     with gr.Blocks(title=metadata.product_display_name) as demo:
-        gr.Markdown(f"# {metadata.product_display_name}")
+        if show_combined_nav:
+            gr.HTML(
+                f"""
+                <div id="app-topbar">
+                  <h1>{metadata.product_display_name}</h1>
+                  <div id="auth-utility-bar">
+                    <a href="/workspace/">Home</a>
+                    <a href="/sign-out">Sign Out</a>
+                  </div>
+                </div>
+                """
+            )
+            gr.HTML(
+                """
+                <div id="simple-ui-corner-link">
+                  <a href="/simple/">Open Simple UI</a>
+                </div>
+                """
+            )
+        else:
+            gr.Markdown(f"# {metadata.product_display_name}")
         gr.Markdown(
             "An application to support financial forecasting, tracking and plan actions. "
             "This application does not store any information on its servers. You're responsible "

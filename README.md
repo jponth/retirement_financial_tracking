@@ -158,6 +158,7 @@ The project now has three UI entrypoints:
   - serves both UIs from one process
   - mounts the workspace UI at `/workspace`
   - mounts the simple one-page UI at `/simple`
+  - supports optional Clerk authentication in front of both mounted UIs
 
 ### Workspace UI (`app.py`)
 
@@ -295,6 +296,33 @@ Then open either:
 
 - `http://127.0.0.1:7860/workspace`
 - `http://127.0.0.1:7860/simple`
+
+### Optional Clerk authentication for `combined_ui.py`
+
+The combined launcher can protect both `/workspace` and `/simple` with Clerk.
+
+Set these environment variables before running `combined_ui.py`:
+
+- `CLERK_ENABLED=1`
+- `CLERK_PUBLISHABLE_KEY=<your Clerk publishable key>`
+- `CLERK_JWKS_URL=<your Clerk JWKS URL>`
+
+Optional:
+
+- `CLERK_JWT_ISSUER=<expected issuer>` if you want issuer validation
+- `CLERK_JWT_AUDIENCE=<expected audience>` if you want audience validation
+- `CLERK_AFTER_SIGN_IN_URL=/workspace/`
+- `CLERK_SESSION_COOKIE=__session`
+
+When enabled:
+
+- unauthenticated requests to `/`, `/workspace`, and `/simple` redirect to `/sign-in`
+- `/sign-in` renders a Clerk sign-in page and then returns users to `/workspace/` by default
+
+Notes:
+
+- the standalone launchers `app.py` and `simple_spa.py` remain direct local-dev entrypoints and are not wrapped by Clerk
+- `combined_ui.py` is the launcher to use when you want browser auth in front of both UIs
 
 ## Tests
 

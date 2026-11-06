@@ -6,6 +6,16 @@ import pytest
 import app as app_module
 import combined_ui as combined_ui_module
 import simple_spa as simple_spa_module
+from retirement_financial_tracking.clerk_auth import (
+    ClerkSettings,
+    auth_complete_target,
+    frontend_api_domain_from_publishable_key,
+    protected_ui_path,
+    render_auth_complete_html,
+    render_sign_in_html,
+    render_sign_out_html,
+    sign_in_redirect_target,
+)
 import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
     Account,
@@ -2057,6 +2067,167 @@ def test_combined_ui_builds_with_both_paths():
     assert "/" in route_paths
     assert "/workspace" in route_paths
     assert "/simple" in route_paths
+    assert "/sign-in" in route_paths
+    assert "/sign-out" in route_paths
+
+
+def test_clerk_path_helpers():
+    assert protected_ui_path("/")
+    assert protected_ui_path("/workspace")
+    assert protected_ui_path("/workspace/")
+    assert protected_ui_path("/simple/data")
+    assert not protected_ui_path("/sign-in")
+    assert sign_in_redirect_target("/workspace/") == "/sign-in?return_url=%2Fworkspace%2F"
+    assert auth_complete_target("/workspace/") == "/auth/complete?return_url=%2Fworkspace%2F"
+
+
+def test_render_sign_in_html_loads_dynamic_clerk_scripts():
+    html = render_sign_in_html(
+        ClerkSettings(
+            enabled=True,
+            publishable_key="pk_test_Y2xlcmsuY2xlcmsuY29tJA",
+            jwks_url="https://example.com/.well-known/jwks.json",
+            jwt_issuer=None,
+            jwt_audience=None,
+            after_sign_in_url="/workspace/",
+            cookie_name="__session",
+            app_session_ttl_seconds=28800,
+        )
+    )
+
+    assert 'src="https://clerk.clerk.com/npm/@clerk/ui@1/dist/ui.browser.js"' in html
+    assert 'data-clerk-publishable-key="pk_test_Y2xlcmsuY2xlcmsuY29tJA"' in html
+    assert "/npm/@clerk/clerk-js@6/dist/clerk.browser.js" in html
+    assert "__internal_ClerkUICtor" in html
+    assert "await window.Clerk.load" in html
+    assert "window.Clerk.mountSignIn" in html
+    assert '/auth/complete?return_url=%2Fworkspace%2F' in html
+
+
+def test_render_auth_complete_html_posts_session_token():
+    html = render_auth_complete_html(
+        ClerkSettings(
+            enabled=True,
+            publishable_key="pk_test_Y2xlcmsuY2xlcmsuY29tJA",
+            jwks_url="https://example.com/.well-known/jwks.json",
+            jwt_issuer=None,
+            jwt_audience=None,
+            after_sign_in_url="/workspace/",
+            cookie_name="rft_clerk_session",
+            app_session_ttl_seconds=28800,
+        )
+    )
+
+    assert 'fetch("/auth/session"' in html
+    assert "window.Clerk.session.getToken()" in html
+
+
+def test_render_sign_out_html_redirects_back_to_sign_in():
+    html = render_sign_out_html(
+        ClerkSettings(
+            enabled=True,
+            publishable_key="pk_test_Y2xlcmsuY2xlcmsuY29tJA",
+            jwks_url="https://example.com/.well-known/jwks.json",
+            jwt_issuer=None,
+            jwt_audience=None,
+            after_sign_in_url="/workspace/",
+            cookie_name="rft_clerk_session",
+            app_session_ttl_seconds=28800,
+        )
+    )
+
+    assert "window.Clerk.signOut()" in html
+    assert '/sign-in?return_url=%2Fworkspace%2F' in html
+
+
+def test_frontend_api_domain_from_publishable_key():
+    assert frontend_api_domain_from_publishable_key("pk_test_Y2xlcmsuY2xlcmsuY29tJA") == "clerk.clerk.com"
+
+
+def test_combined_ui_redirects_root_to_sign_in_when_clerk_enabled(monkeypatch):
+    monkeypatch.setenv("CLERK_ENABLED", "1")
+    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "pk_test_example")
+    monkeypatch.setenv("CLERK_JWKS_URL", "https://example.com/.well-known/jwks.json")
+    monkeypatch.setattr(
+        combined_ui_module,
+        "ClerkSettings",
+        type(
+            "PatchedClerkSettings",
+            (),
+            {"from_env": staticmethod(ClerkSettings.from_env)},
+        ),
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(combined_ui_module.build_combined_app())
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/sign-in?return_url=%2F"
+
+
+def test_combined_ui_creates_backend_session_cookie(monkeypatch):
+    monkeypatch.setenv("CLERK_ENABLED", "1")
+    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "pk_test_example")
+    monkeypatch.setenv("CLERK_JWKS_URL", "https://example.com/.well-known/jwks.json")
+    monkeypatch.setenv("CLERK_SESSION_COOKIE", "rft_clerk_session")
+    monkeypatch.setattr(
+        combined_ui_module,
+        "ClerkSettings",
+        type(
+            "PatchedClerkSettings",
+            (),
+            {"from_env": staticmethod(ClerkSettings.from_env)},
+        ),
+    )
+    monkeypatch.setattr(
+        combined_ui_module,
+        "verify_session_token",
+        lambda token, settings: {"sub": "user_123"} if token == "sample-token" else None,
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(combined_ui_module.build_combined_app())
+    response = client.post("/auth/session", json={"token": "sample-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert "rft_clerk_session" in response.cookies
+
+
+def test_combined_ui_sign_out_clears_backend_session_cookie(monkeypatch):
+    monkeypatch.setenv("CLERK_ENABLED", "1")
+    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "pk_test_Y2xlcmsuY2xlcmsuY29tJA")
+    monkeypatch.setenv("CLERK_JWKS_URL", "https://example.com/.well-known/jwks.json")
+    monkeypatch.setenv("CLERK_SESSION_COOKIE", "rft_clerk_session")
+    monkeypatch.setattr(
+        combined_ui_module,
+        "ClerkSettings",
+        type(
+            "PatchedClerkSettings",
+            (),
+            {"from_env": staticmethod(ClerkSettings.from_env)},
+        ),
+    )
+    monkeypatch.setattr(
+        combined_ui_module,
+        "verify_session_token",
+        lambda token, settings: {"sub": "user_123"} if token == "sample-token" else None,
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(combined_ui_module.build_combined_app())
+    session_response = client.post("/auth/session", json={"token": "sample-token"})
+    assert session_response.status_code == 200
+
+    response = client.get("/sign-out", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "set-cookie" in response.headers
+    assert "rft_clerk_session=\"\";" in response.headers["set-cookie"]
 
 
 def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):

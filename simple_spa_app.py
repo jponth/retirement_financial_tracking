@@ -149,6 +149,45 @@ ACCOUNT_FORECAST_HEADERS = [
 CSS = (
     MOJAVE_SAGE_CSS
     + """
+    #app-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.35rem;
+    }
+
+    #app-topbar h1 {
+        margin: 0;
+        line-height: 1.15;
+    }
+
+    #auth-utility-bar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    #auth-utility-bar a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.5rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid #C9C0A6;
+        background: rgba(255, 250, 241, 0.88);
+        color: #4D4A37;
+        text-decoration: none;
+        font-size: 0.95rem;
+        box-shadow: 0 3px 10px rgba(70, 65, 47, 0.06);
+    }
+
+    #auth-utility-bar a:hover {
+        background: rgba(232, 228, 214, 0.96);
+    }
+
     .numeric-table th,
     .numeric-table td,
     .numeric-table .header-cell,
@@ -339,12 +378,25 @@ CSS = (
 )
 
 
-def build_ui() -> gr.Blocks:
+def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
 
     with gr.Blocks(title=metadata.product_display_name) as demo:
-        gr.Markdown(f"# {metadata.product_display_name}")
+        if show_combined_nav:
+            gr.HTML(
+                f"""
+                <div id="app-topbar">
+                  <h1>{metadata.product_display_name}</h1>
+                  <div id="auth-utility-bar">
+                    <a href="/workspace/">Home</a>
+                    <a href="/sign-out">Sign Out</a>
+                  </div>
+                </div>
+                """
+            )
+        else:
+            gr.Markdown(f"# {metadata.product_display_name}")
         gr.Markdown(
             "Create or load a retirement case workbook, edit the main planning inputs, "
             "run the forecast, and export the updated case."
