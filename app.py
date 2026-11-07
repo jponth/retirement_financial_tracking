@@ -152,6 +152,16 @@ CSS = (
 """
 )
 
+ABOUT_AND_HOWTO_PATH = Path(__file__).resolve().parent / "templates" / "about_and_howto.md"
+ABOUT_AND_HOWTO_FALLBACK = "## About & How To\n\nUnable to load the About content file."
+
+
+def _load_about_and_howto_markdown() -> str:
+    try:
+        return ABOUT_AND_HOWTO_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return ABOUT_AND_HOWTO_FALLBACK
+
 
 def run_forecast_ui(*args):
     try:
@@ -236,6 +246,9 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
         with gr.Row(elem_id="workspace-shell", equal_height=False):
             with gr.Column(scale=7):
                 with gr.Tabs():
+                    with gr.Tab("About & How To"):
+                        with gr.Column(elem_id="case-setup-panel"):
+                            gr.Markdown(_load_about_and_howto_markdown())
                     with gr.Tab("Case Setup"):
                         with gr.Column(elem_id="case-setup-panel"):
                             with gr.Row():
