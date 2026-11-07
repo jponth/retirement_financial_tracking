@@ -333,6 +333,8 @@ Files relevant to Railway:
   - exposes `GET /healthz`
 - `Procfile`
   - starts the app with `python combined_ui.py`
+- `requirements.txt`
+  - contains `.` so platforms that prefer `pip install -r requirements.txt` will install the project itself and all dependencies declared in `pyproject.toml`
 
 Recommended Railway environment variables:
 

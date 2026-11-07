@@ -1,6 +1,10 @@
+fastapi>=0.115
+fpdf2>=2.8
 gradio>=5.0
 openpyxl>=3.1
 pydantic<3,>=2.9
+PyJWT[crypto]>=2.10
+uvicorn[standard]>=0.32
 
 [dev]
 pytest>=8.3

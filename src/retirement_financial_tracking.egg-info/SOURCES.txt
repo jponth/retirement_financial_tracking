@@ -1,7 +1,10 @@
 README.md
 pyproject.toml
 src/retirement_financial_tracking/__init__.py
+src/retirement_financial_tracking/clerk_auth.py
+src/retirement_financial_tracking/reporting.py
 src/retirement_financial_tracking/ui_helpers.py
+src/retirement_financial_tracking/ui_theme.py
 src/retirement_financial_tracking.egg-info/PKG-INFO
 src/retirement_financial_tracking.egg-info/SOURCES.txt
 src/retirement_financial_tracking.egg-info/dependency_links.txt
@@ -9,6 +12,13 @@ src/retirement_financial_tracking.egg-info/requires.txt
 src/retirement_financial_tracking.egg-info/top_level.txt
 src/retirement_financial_tracking/config/__init__.py
 src/retirement_financial_tracking/config/app_metadata.py
+src/retirement_financial_tracking/config/recommended_actions.py
+src/retirement_financial_tracking/config/tax_tables.py
+src/retirement_financial_tracking/config/recommended_actions_data/__init__.py
+src/retirement_financial_tracking/config/recommended_actions_data/default_actions.json
+src/retirement_financial_tracking/config/tax_tables_data/__init__.py
+src/retirement_financial_tracking/config/tax_tables_data/federal_us.json
+src/retirement_financial_tracking/config/tax_tables_data/state_ct.json
 src/retirement_financial_tracking/domain/__init__.py
 src/retirement_financial_tracking/domain/models.py
 src/retirement_financial_tracking/io/__init__.py
