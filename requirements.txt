@@ -1,1 +1,7 @@
-.
+fastapi>=0.115
+fpdf2>=2.8
+gradio>=5.0
+openpyxl>=3.1
+pydantic>=2.9,<3
+PyJWT[crypto]>=2.10
+uvicorn[standard]>=0.32

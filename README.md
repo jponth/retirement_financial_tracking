@@ -332,9 +332,10 @@ Files relevant to Railway:
   - reads `PORT` from the environment
   - exposes `GET /healthz`
 - `Procfile`
-  - starts the app with `python combined_ui.py`
+  - starts the app with `PYTHONPATH=src python combined_ui.py`
 - `requirements.txt`
-  - contains `.` so platforms that prefer `pip install -r requirements.txt` will install the project itself and all dependencies declared in `pyproject.toml`
+  - lists the runtime dependencies explicitly
+  - this avoids build systems that install `requirements.txt` before copying the full source tree, which would break a `.` editable/local-package install for this `src/` layout project
 
 Recommended Railway environment variables:
 
