@@ -233,8 +233,8 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
         gr.Markdown(
             "An application to support financial forecasting, tracking and plan actions. "
             "This application does not store any information on its servers. You're responsible "
-            "to export the output (an Excel file), after you have performed the forecasting. "
-            "You take 100% responsibility of your financial matters and the no one else is responsible."
+            "to export the output (an Excel file), after you have performed forecasting. "
+            "You take 100% responsibility about your financial matters and live a stable retirement lifestyle."
         )
 
         status = gr.Markdown("Ready.")
