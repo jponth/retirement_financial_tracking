@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 from pathlib import Path
 import pandas as pd
 import pytest
@@ -16,6 +17,13 @@ from retirement_financial_tracking.clerk_auth import (
     render_sign_out_html,
     sign_in_redirect_target,
 )
+from retirement_financial_tracking.guided_mode import (
+    GuidedForecastResult,
+    _llm_extract,
+    guided_values_to_ui_values,
+    initial_guided_state,
+)
+from retirement_financial_tracking.llm_client import provider_status_text, resolve_model, resolve_provider
 import retirement_financial_tracking.io.workbook as workbook_io
 from retirement_financial_tracking.domain.models import (
     Account,
@@ -2209,3 +2217,179 @@ def test_run_forecast_ui_reports_generated_pdf_path(monkeypatch):
     result = app_module.run_forecast_ui(*[payload[key] for key in PLAN_UI_INPUT_KEYS])
 
     assert result[3] == "Forecast completed successfully. Report PDF is ready to download."
+
+
+def test_initial_guided_state_starts_with_assistant_prompt():
+    state = initial_guided_state()
+
+    assert state["step_index"] == 0
+    assert state["completed"] is False
+    assert state["chat_history"][0]["role"] == "assistant"
+    assert "Interactive Guide" not in state["chat_history"][0]["content"]
+
+
+def test_guided_values_to_ui_values_builds_single_person_draft():
+    values = guided_values_to_ui_values(
+        {
+            "household_name": "JP Retirement",
+            "state": "CT",
+            "base_year": 2026,
+            "current_age": 62,
+            "retirement_age": 67,
+            "total_assets": 1800000,
+            "annual_spending": 120000,
+            "monthly_social_security": 3200,
+        }
+    )
+
+    assert values["household_name"] == "JP Retirement"
+    assert values["plan_id"] == "jp_retirement"
+    assert values["filing_status"] == "single"
+    assert values["planned_annual_spending"] == "120,000"
+    assert values["people"][0][3] == 1964
+    assert values["people"][0][4] == 2031
+    assert values["people"][0][7] == "3,200"
+    assert len(values["people"]) == 1
+
+
+def test_guided_turn_ui_syncs_workspace_forms(monkeypatch):
+    values = guided_values_to_ui_values(
+        {
+            "household_name": "Guide Plan",
+            "state": "CT",
+            "base_year": 2026,
+            "current_age": 62,
+            "retirement_age": 67,
+            "total_assets": 1800000,
+            "annual_spending": 120000,
+            "monthly_social_security": 3200,
+        }
+    )
+
+    def fake_guided_user_turn(user_message, guide_state):
+        return GuidedForecastResult(
+            chat_history=[{"role": "assistant", "content": "done"}],
+            state={"completed": True},
+            key_numbers_markdown="## Key Numbers",
+            forecast_table=[[2026, "100"]],
+            account_forecast_table=[[2026, "acct"]],
+            forecast_summary="Forecast summary",
+            report_markdown="# Report",
+            report_pdf_path="/tmp/report.pdf",
+            workbook_path="/tmp/export.xlsx",
+            status_message="Interactive Guide ran the forecast successfully.",
+            ui_values=values,
+        )
+
+    monkeypatch.setattr(app_module, "guided_user_turn", fake_guided_user_turn)
+
+    result = app_module.guided_turn_ui("done", {}, "old snapshot")
+
+    form_start = 17
+    imported_path_index = form_start + len(PLAN_UI_INPUT_KEYS)
+    workbook_input_index = imported_path_index + 1
+
+    assert result[6].endswith("Traditional forms and forecast tabs are now synced.")
+    assert result[7] == [[2026, "100"]]
+    assert result[8] == [[2026, "acct"]]
+    assert result[9] == "Forecast summary"
+    assert result[13] != "old snapshot"
+    assert result[14] == "/tmp/report.pdf"
+    assert result[15] == "/tmp/export.xlsx"
+    assert result[16] == "Forecast summary"
+    assert result[form_start] == values["plan_id"]
+    assert result[form_start + 1] == values["household_name"]
+    assert result[form_start + len(PLAN_UI_INPUT_KEYS) - 1] == values["snapshots"]
+    assert result[imported_path_index] is None
+    assert result[workbook_input_index]["value"] is None
+
+
+def test_resolve_provider_auto_prefers_groq_when_api_key_present(monkeypatch):
+    monkeypatch.setenv("IG_LLM_PROVIDER_NAME", "auto")
+    monkeypatch.setenv("IG_LLM_API_KEY", "gsk_test")
+    monkeypatch.setenv("OLLAMA_ENABLED", "1")
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "llama-3.1-8b-instant")
+
+    assert resolve_provider() == "groq"
+    assert resolve_model() == "llama-3.1-8b-instant"
+
+
+def test_resolve_provider_auto_uses_ollama_without_groq_key(monkeypatch):
+    monkeypatch.setenv("IG_LLM_PROVIDER_NAME", "auto")
+    monkeypatch.delenv("IG_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_ENABLED", "1")
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "phi3")
+
+    assert resolve_provider() == "ollama"
+    assert resolve_model() == "phi3"
+
+
+def test_provider_status_text_reports_groq(monkeypatch):
+    monkeypatch.setenv("IG_LLM_PROVIDER_NAME", "groq")
+    monkeypatch.setenv("IG_LLM_API_KEY", "gsk_test")
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "llama-3.1-8b-instant")
+
+    assert provider_status_text() == (
+        "LLM provider: `groq`. Active model: `llama-3.1-8b-instant`."
+    )
+
+
+def test_provider_status_text_reports_openai(monkeypatch):
+    monkeypatch.setenv("IG_LLM_PROVIDER_NAME", "openai")
+    monkeypatch.setenv("IG_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "gpt-5-mini")
+
+    assert provider_status_text() == (
+        "LLM provider: `openai`. Active model: `gpt-5-mini`."
+    )
+
+
+def test_resolve_provider_logs_when_provider_env_missing(monkeypatch, caplog):
+    monkeypatch.delenv("IG_LLM_PROVIDER_NAME", raising=False)
+    monkeypatch.delenv("IG_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_ENABLED", "1")
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "phi3")
+
+    caplog.clear()
+    provider = resolve_provider()
+
+    assert provider == "ollama"
+    assert "IG_LLM_PROVIDER_NAME" in caplog.text
+
+
+def test_provider_status_text_logs_missing_api_key_for_groq(monkeypatch, caplog):
+    monkeypatch.setenv("IG_LLM_PROVIDER_NAME", "groq")
+    monkeypatch.delenv("IG_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("IG_LLM_MODEL_NAME", "openai/gpt-oss-20b")
+
+    caplog.clear()
+    status = provider_status_text()
+
+    assert status.startswith("LLM connection status:")
+    assert "IG_LLM_API_KEY" in caplog.text
+
+
+def test_llm_extract_logs_input_prompt_output(monkeypatch, caplog):
+    def fake_generate(prompt: str, *, json_mode: bool, temperature: float) -> str:
+        assert "Return JSON only." in prompt
+        assert json_mode is True
+        assert temperature == 0.0
+        return '{"value": 1600000}'
+
+    monkeypatch.setattr(
+        "retirement_financial_tracking.guided_mode.generate",
+        fake_generate,
+    )
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="retirement_financial_tracking.guided_mode"):
+        parsed = _llm_extract(
+            instructions="Extract the user's total retirement savings.",
+            user_message="I have 1.6 million dollars.",
+        )
+
+    assert parsed == {"value": 1600000}
+    assert "Interactive Guide extraction input" in caplog.text
+    assert "user_input:\nI have 1.6 million dollars." in caplog.text
+    assert "Interactive Guide extraction parsed output" in caplog.text
+    assert '"value": 1600000' in caplog.text

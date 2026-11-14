@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import gradio as gr
 
 from retirement_financial_tracking import load_app_metadata
@@ -374,6 +376,19 @@ CSS = (
 )
 
 
+def _simple_ui_env_markdown() -> str:
+    rows = [
+        ("CLERK_ENABLED", os.getenv("CLERK_ENABLED", "")),
+        ("CLERK_JWKS_URL", os.getenv("CLERK_JWKS_URL", "")),
+        ("IG_LLM_PROVIDER_NAME", os.getenv("IG_LLM_PROVIDER_NAME", "")),
+        ("IG_LLM_MODEL_NAME", os.getenv("IG_LLM_MODEL_NAME", "")),
+        ("IG_LLM_API_KEY", "(set)" if os.getenv("IG_LLM_API_KEY") else "(unset)"),
+    ]
+    lines = ["### Runtime Configuration"]
+    lines.extend(f"- `{key}` = `{value or '(unset)'}`" for key, value in rows)
+    return "\n".join(lines)
+
+
 def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
@@ -397,6 +412,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
             "Create or load a retirement case workbook, edit the main planning inputs, "
             "run the forecast, and export the updated case."
         )
+        gr.Markdown(_simple_ui_env_markdown())
 
         status = gr.Markdown("Ready.")
 

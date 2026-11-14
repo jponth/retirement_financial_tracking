@@ -343,6 +343,10 @@ Recommended Railway environment variables:
   - Railway usually provides this automatically
 - `APP_COOKIE_SECURE=1`
   - recommended for HTTPS deployments so the app session cookie is marked secure
+- `IG_LLM_PROVIDER_NAME=groq`
+  - use a hosted LLM provider for the Interactive Guide on Railway
+- `IG_LLM_API_KEY=<your Groq API key>`
+- `IG_LLM_MODEL_NAME=llama-3.1-8b-instant`
 - `CLERK_ENABLED=1`
 - `CLERK_PUBLISHABLE_KEY=<your Clerk publishable key>`
 - `CLERK_JWKS_URL=<your Clerk JWKS URL>`
@@ -355,6 +359,10 @@ Recommended Railway environment variables:
 Notes for production:
 
 - workbook exports and report PDFs are generated as transient download artifacts rather than persistent project-folder files
+- the Interactive Guide now supports provider-based LLM access:
+  - local development can keep using Ollama
+  - hosted deployments like Railway should use `IG_LLM_PROVIDER_NAME=groq` plus `IG_LLM_API_KEY`
+  - OpenAI API is also supported with `IG_LLM_PROVIDER_NAME=openai`
 - the current authenticated app session store in `combined_ui.py` is in memory, so the safest first deployment shape is a single Railway instance
 - if you later scale beyond one instance, move app-session storage out of process or switch to a signed-cookie design
 

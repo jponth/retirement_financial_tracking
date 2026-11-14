@@ -5,6 +5,12 @@ from pathlib import Path
 import gradio as gr
 
 from retirement_financial_tracking import load_app_metadata
+from retirement_financial_tracking.guided_mode import (
+    guided_user_turn,
+    initial_guided_state,
+    reset_guided_conversation,
+)
+from retirement_financial_tracking.logging_setup import configure_app_logging
 from retirement_financial_tracking.ui_theme import (
     SAGE_PANEL_BACKGROUND,
     SAGE_PANEL_BORDER,
@@ -132,7 +138,9 @@ CSS = (
     #report-panel,
     #forecast-panel,
     #export-panel,
-    #case-setup-panel {{
+    #case-setup-panel,
+    #guide-panel,
+    #guide-side-panel {{
         border: 1px solid {SAGE_PANEL_BORDER};
         border-radius: 18px;
         padding: 1.1rem;
@@ -148,6 +156,97 @@ CSS = (
 
     #workspace-shell .gr-button {{
         box-shadow: 0 3px 10px rgba(70, 65, 47, 0.08);
+    }}
+
+    #guide-chatbot {{
+        min-height: 220px;
+        max-height: 220px;
+        overflow-x: auto;
+    }}
+
+    #guide-chatbot .panel-header,
+    #guide-chatbot .icon-buttons-wrapper,
+    #guide-chatbot .icon-button-wrapper,
+    #guide-chatbot .message-actions,
+    #guide-chatbot .options,
+    #guide-chatbot .controls-wrap {{
+        display: none !important;
+    }}
+
+    #guide-intro p,
+    #guide-intro li,
+    #guide-intro span,
+    #guide-chatbot .wrap,
+    #guide-chatbot .message-wrap,
+    #guide-chatbot .message,
+    #guide-chatbot .bubble-wrap,
+    #guide-chatbot .bubble {{
+        overflow-x: auto;
+        font-size: 1rem;
+        line-height: 1.45;
+    }}
+
+    #guide-chatbot .wrap,
+    #guide-chatbot .message-wrap,
+    #guide-chatbot .bubble-wrap,
+    #guide-chatbot .message:first-child,
+    #guide-chatbot .bubble:first-child {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
+
+    #guide-chatbot .wrapper,
+    #guide-chatbot .container,
+    #guide-chatbot .chatbot-wrapper {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
+
+    #guide-chatbot .message,
+    #guide-chatbot .message p,
+    #guide-chatbot .message span,
+    #guide-chatbot .message li,
+    #guide-chatbot .message div {{
+        font-size: 1rem !important;
+        line-height: 1.45 !important;
+        font-weight: 400 !important;
+    }}
+
+    #guide-intro p,
+    #guide-intro li,
+    #guide-intro span {{
+        font-size: 1rem !important;
+        line-height: 1.45 !important;
+        font-weight: 400 !important;
+        margin: 0 !important;
+    }}
+
+    #guide-chatbot .message p {{
+        margin: 0 0 0.85rem 0 !important;
+    }}
+
+    #guide-chatbot .message p:last-child {{
+        margin-bottom: 0 !important;
+    }}
+
+    #guide-chatbot button,
+    #guide-chatbot [role="button"] {{
+        font-size: 0.9rem;
+    }}
+
+    #guide-input-wrap .gr-textbox {{
+        width: 100%;
+    }}
+
+    #guide-actions {{
+        justify-content: flex-start;
+        gap: 0.6rem;
+        margin-top: 0.45rem;
+    }}
+
+    #guide-actions .gr-button {{
+        min-width: 120px;
+        flex: 0 0 auto;
     }}
 """
 )
@@ -201,6 +300,110 @@ def export_workbook_ui(*args):
         return gr.update(value=None, visible=False), f"Export failed: `{exc}`", None
 
 
+def guided_turn_ui(
+    user_message: str,
+    guide_state: dict | None,
+    current_case_snapshot: str,
+):
+    result = guided_user_turn(user_message, guide_state)
+    case_snapshot = current_case_snapshot
+    report_file_update = gr.update(value=None, visible=False)
+    export_file_update = gr.update(value=None, visible=False)
+    shared_report_file_update = gr.update(value=None)
+    shared_export_file_update = gr.update(value=None, visible=False)
+    latest_report_path = gr.skip()
+    latest_export_path = gr.skip()
+    latest_forecast_summary = gr.skip()
+    report_markdown = gr.skip()
+    forecast_table_update = gr.skip()
+    account_forecast_table_update = gr.skip()
+    forecast_summary_update = gr.skip()
+    form_values = _skip_tuple(len(PLAN_UI_INPUT_KEYS))
+    imported_workbook_path_update = gr.skip()
+    workbook_input_update = gr.skip()
+
+    if result.report_pdf_path:
+        report_file_update = gr.update(value=result.report_pdf_path, visible=True)
+        shared_report_file_update = gr.update(value=result.report_pdf_path)
+        latest_report_path = result.report_pdf_path
+        report_markdown = result.report_markdown
+
+    if result.workbook_path:
+        export_file_update = gr.update(value=result.workbook_path, visible=True)
+        shared_export_file_update = gr.update(value=result.workbook_path, visible=True)
+        latest_export_path = result.workbook_path
+
+    if result.ui_values:
+        form_values = _workspace_form_values_tuple(result.ui_values)
+        imported_workbook_path_update = None
+        workbook_input_update = gr.update(value=None)
+        forecast_table_update = result.forecast_table or []
+        account_forecast_table_update = result.account_forecast_table or []
+        forecast_summary_update = result.forecast_summary
+        latest_forecast_summary = result.forecast_summary
+        case_snapshot = _summary_rail_markdown(
+            result.ui_values,
+            imported_path=imported_workbook_path_update,
+            forecast_summary=result.forecast_summary,
+            report_pdf_path=result.report_pdf_path,
+            export_path=result.workbook_path,
+        )
+        status_message = (
+            f"{result.status_message} Traditional forms and forecast tabs are now synced."
+        )
+    else:
+        status_message = result.status_message
+
+    return (
+        result.chat_history,
+        result.state,
+        "",
+        result.key_numbers_markdown,
+        report_file_update,
+        export_file_update,
+        status_message,
+        forecast_table_update,
+        account_forecast_table_update,
+        forecast_summary_update,
+        report_markdown,
+        shared_report_file_update,
+        shared_export_file_update,
+        case_snapshot,
+        latest_report_path,
+        latest_export_path,
+        latest_forecast_summary,
+        *form_values,
+        imported_workbook_path_update,
+        workbook_input_update,
+    )
+
+
+def guided_reset_ui(current_case_snapshot: str):
+    result = reset_guided_conversation()
+    return (
+        result.chat_history,
+        result.state,
+        "",
+        result.key_numbers_markdown,
+        gr.update(value=None, visible=False),
+        gr.update(value=None, visible=False),
+        result.status_message,
+        gr.skip(),
+        gr.skip(),
+        gr.skip(),
+        gr.skip(),
+        gr.update(value=None),
+        gr.update(value=None, visible=False),
+        current_case_snapshot,
+        gr.skip(),
+        gr.skip(),
+        gr.skip(),
+        *_skip_tuple(len(PLAN_UI_INPUT_KEYS)),
+        gr.skip(),
+        gr.skip(),
+    )
+
+
 def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
@@ -242,10 +445,57 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
         latest_report_path = gr.State(value=None)
         latest_export_path = gr.State(value=None)
         latest_forecast_summary = gr.State(value="")
+        guided_defaults = reset_guided_conversation()
+        guided_state = gr.State(value=guided_defaults.state)
 
         with gr.Row(elem_id="workspace-shell", equal_height=False):
             with gr.Column(scale=7):
                 with gr.Tabs():
+                    with gr.Tab("Interactive Guide"):
+                        with gr.Row(equal_height=False):
+                            with gr.Column(scale=7, elem_id="guide-panel"):
+                                gr.Markdown(
+                                    "This interactive guide/UI will help you create a retirement forecast, by asking you required data needed, "
+                                    "run the forecast and show you the key aspects of the forecast."
+                                    ,
+                                    elem_id="guide-intro",
+                                )
+                                with gr.Accordion("More about this guide", open=False):
+                                    gr.Markdown(
+                                        "The forecast can be changed based on many aspects such as annual expenses, inflation, when you retire, "
+                                        "rate of return assumptions, starting of social security payment, when you start Roth conversion, and many others. "
+                                        "This system allows you change the above and view the impact on the retirement numbers. These advanced updates "
+                                        "can be done in the UI tabs, such as Case Setup, visible to the right."
+                                    )
+                                guided_chatbot = gr.Chatbot(
+                                    value=guided_defaults.chat_history,
+                                    elem_id="guide-chatbot",
+                                    show_label=False,
+                                    height=220,
+                                    buttons=[],
+                                    feedback_options=None,
+                                )
+                                with gr.Column(elem_id="guide-input-wrap"):
+                                    guided_input = gr.Textbox(
+                                        label="Reply to the guide",
+                                        placeholder="Type your answer here...",
+                                        lines=5,
+                                    )
+                                    with gr.Row(elem_id="guide-actions"):
+                                        guided_send_btn = gr.Button("Send", variant="primary", size="sm")
+                                        guided_reset_btn = gr.Button("Start Over", variant="secondary", size="sm")
+                            with gr.Column(scale=3, elem_id="guide-side-panel"):
+                                guided_key_numbers = gr.Markdown(guided_defaults.key_numbers_markdown)
+                                guided_report_file = gr.File(
+                                    label="Guide Report PDF",
+                                    interactive=False,
+                                    visible=False,
+                                )
+                                guided_export_file = gr.File(
+                                    label="Guide Workbook",
+                                    interactive=False,
+                                    visible=False,
+                                )
                     with gr.Tab("About & How To"):
                         with gr.Column(elem_id="case-setup-panel"):
                             gr.Markdown(_load_about_and_howto_markdown())
@@ -862,6 +1112,43 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 latest_export_path,
             ],
         )
+        guided_send_outputs = [
+            guided_chatbot,
+            guided_state,
+            guided_input,
+            guided_key_numbers,
+            guided_report_file,
+            guided_export_file,
+            status,
+            forecast_table,
+            account_forecast_table,
+            forecast_summary,
+            report_markdown,
+            report_pdf_file,
+            export_file,
+            case_snapshot,
+            latest_report_path,
+            latest_export_path,
+            latest_forecast_summary,
+            *inputs,
+            imported_workbook_path,
+            workbook_input,
+        ]
+        guided_send_btn.click(
+            fn=guided_turn_ui,
+            inputs=[guided_input, guided_state, case_snapshot],
+            outputs=guided_send_outputs,
+        )
+        guided_input.submit(
+            fn=guided_turn_ui,
+            inputs=[guided_input, guided_state, case_snapshot],
+            outputs=guided_send_outputs,
+        )
+        guided_reset_btn.click(
+            fn=guided_reset_ui,
+            inputs=[case_snapshot],
+            outputs=guided_send_outputs,
+        )
 
     return demo
 
@@ -962,52 +1249,7 @@ def _workspace_output_tuple(
     imported_path: str | None,
 ):
     return (
-        values["plan_id"],
-        values["household_name"],
-        values["base_year"],
-        values["state"],
-        values["filing_status"],
-        values["tax_model"],
-        values["tax_projection_mode"],
-        values["projection_years"],
-        values["inflation_rate"],
-        values["default_bucket_expense_years"],
-        values["return_model_type"],
-        values["return_scenario_type"],
-        values["monte_carlo_simulations"],
-        values["monte_carlo_seed"],
-        values["monte_carlo_depletion_target_year"],
-        values["monte_carlo_depletion_target_age"],
-        values["bucket_return_short_term"],
-        values["bucket_return_intermediate"],
-        values["bucket_return_long_term"],
-        values["bucket_return_other"],
-        values["bucket_volatility_short_term"],
-        values["bucket_volatility_intermediate"],
-        values["bucket_volatility_long_term"],
-        values["bucket_volatility_other"],
-        values["planned_annual_spending"],
-        values["target_cash_reserve"],
-        values["federal_effective_tax_rate"],
-        values["state_effective_tax_rate"],
-        values["rmd_start_age"],
-        values["auto_fund_shortfall"],
-        values["use_withdrawal_priority_policy"],
-        values["withdrawal_tax_priority"],
-        values["withdrawal_owner_priority"],
-        values["withdrawal_account_type_priority"],
-        values["withdrawal_allocation_method"],
-        values["roth_handling_policy"],
-        values["hsa_contribution_limit_self"],
-        values["hsa_contribution_limit_family"],
-        values["hsa_catch_up_amount"],
-        values["notes"],
-        values["people"],
-        values["buckets"],
-        values["accounts"],
-        values["cash_flows"],
-        values["holdings"],
-        values["snapshots"],
+        *_workspace_form_values_tuple(values),
         status_message,
         imported_path,
         _summary_rail_markdown(
@@ -1027,6 +1269,14 @@ def _workspace_output_tuple(
         "",
         gr.update(value=None, visible=False),
     )
+
+
+def _workspace_form_values_tuple(values: dict[str, object]) -> tuple[object, ...]:
+    return tuple(values[key] for key in PLAN_UI_INPUT_KEYS)
+
+
+def _skip_tuple(count: int) -> tuple[object, ...]:
+    return tuple(gr.skip() for _ in range(count))
 
 
 def _summary_rail_markdown(
@@ -1074,4 +1324,5 @@ def _summary_rail_markdown(
 
 
 if __name__ == "__main__":
+    configure_app_logging()
     build_ui().launch(css=CSS, theme=mojave_sage_theme())

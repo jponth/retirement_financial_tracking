@@ -26,6 +26,7 @@ from retirement_financial_tracking.clerk_auth import (
     verify_session_token,
 )
 from retirement_financial_tracking import load_app_metadata
+from retirement_financial_tracking.logging_setup import configure_app_logging
 from retirement_financial_tracking.ui_theme import mojave_sage_theme
 
 
@@ -159,6 +160,7 @@ def build_combined_app() -> FastAPI:
 
 
 def main() -> None:
+    configure_app_logging()
     uvicorn.run(
         build_combined_app(),
         host="0.0.0.0",
