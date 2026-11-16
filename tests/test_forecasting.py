@@ -2051,6 +2051,16 @@ def test_workspace_build_ui_instantiates():
     assert demo is not None
 
 
+def test_interactive_guide_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("IG_MODE_ENABLED", raising=False)
+    assert app_module._interactive_guide_enabled() is False
+
+
+def test_interactive_guide_enabled_when_env_is_1(monkeypatch):
+    monkeypatch.setenv("IG_MODE_ENABLED", "1")
+    assert app_module._interactive_guide_enabled() is True
+
+
 def test_simple_spa_entrypoint_instantiates():
     demo = simple_spa_module.build_ui()
     assert demo is not None

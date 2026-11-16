@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import gradio as gr
@@ -256,6 +257,10 @@ ABOUT_AND_HOWTO_PATH = Path(__file__).resolve().parent / "templates" / "about_an
 ABOUT_AND_HOWTO_FALLBACK = "## About & How To\n\nUnable to load the About content file."
 
 
+def _interactive_guide_enabled() -> bool:
+    return os.getenv("IG_MODE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _load_about_and_howto_markdown() -> str:
     try:
         return ABOUT_AND_HOWTO_PATH.read_text(encoding="utf-8")
@@ -408,6 +413,7 @@ def guided_reset_ui(current_case_snapshot: str):
 def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
     metadata = load_app_metadata()
     defaults = plan_to_ui_values(sample_plan())
+    interactive_guide_enabled = _interactive_guide_enabled()
     default_report_message = (
         "Run the forecast from the Forecast tab to generate a presentable report here."
     )
@@ -446,57 +452,60 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
         latest_report_path = gr.State(value=None)
         latest_export_path = gr.State(value=None)
         latest_forecast_summary = gr.State(value="")
-        guided_defaults = reset_guided_conversation()
-        guided_state = gr.State(value=guided_defaults.state)
+        guided_defaults = reset_guided_conversation() if interactive_guide_enabled else None
+        guided_state = (
+            gr.State(value=guided_defaults.state) if interactive_guide_enabled else None
+        )
 
         with gr.Row(elem_id="workspace-shell", equal_height=False):
             with gr.Column(scale=7):
                 with gr.Tabs():
-                    with gr.Tab("Interactive Guide"):
-                        with gr.Row(equal_height=False):
-                            with gr.Column(scale=7, elem_id="guide-panel"):
-                                gr.Markdown(
-                                    "This interactive guide/UI will help you create a retirement forecast, by asking you required data needed, "
-                                    "run the forecast and show you the key aspects of the forecast."
-                                    ,
-                                    elem_id="guide-intro",
-                                )
-                                with gr.Accordion("More about this guide", open=False):
+                    if interactive_guide_enabled:
+                        with gr.Tab("Interactive Guide"):
+                            with gr.Row(equal_height=False):
+                                with gr.Column(scale=7, elem_id="guide-panel"):
                                     gr.Markdown(
-                                        "The forecast can be changed based on many aspects such as annual expenses, inflation, when you retire, "
-                                        "rate of return assumptions, starting of social security payment, when you start Roth conversion, and many others. "
-                                        "This system allows you change the above and view the impact on the retirement numbers. These advanced updates "
-                                        "can be done in the UI tabs, such as Case Setup, visible to the right."
+                                        "This interactive guide/UI will help you create a retirement forecast, by asking you required data needed, "
+                                        "run the forecast and show you the key aspects of the forecast."
+                                        ,
+                                        elem_id="guide-intro",
                                     )
-                                guided_chatbot = gr.Chatbot(
-                                    value=guided_defaults.chat_history,
-                                    elem_id="guide-chatbot",
-                                    show_label=False,
-                                    height=220,
-                                    buttons=[],
-                                    feedback_options=None,
-                                )
-                                with gr.Column(elem_id="guide-input-wrap"):
-                                    guided_input = gr.Textbox(
-                                        label="Reply to the guide",
-                                        placeholder="Type your answer here...",
-                                        lines=5,
+                                    with gr.Accordion("More about this guide", open=False):
+                                        gr.Markdown(
+                                            "The forecast can be changed based on many aspects such as annual expenses, inflation, when you retire, "
+                                            "rate of return assumptions, starting of social security payment, when you start Roth conversion, and many others. "
+                                            "This system allows you change the above and view the impact on the retirement numbers. These advanced updates "
+                                            "can be done in the UI tabs, such as Case Setup, visible to the right."
+                                        )
+                                    guided_chatbot = gr.Chatbot(
+                                        value=guided_defaults.chat_history,
+                                        elem_id="guide-chatbot",
+                                        show_label=False,
+                                        height=220,
+                                        buttons=[],
+                                        feedback_options=None,
                                     )
-                                    with gr.Row(elem_id="guide-actions"):
-                                        guided_send_btn = gr.Button("Send", variant="primary", size="sm")
-                                        guided_reset_btn = gr.Button("Start Over", variant="secondary", size="sm")
-                            with gr.Column(scale=3, elem_id="guide-side-panel"):
-                                guided_key_numbers = gr.Markdown(guided_defaults.key_numbers_markdown)
-                                guided_report_file = gr.File(
-                                    label="Guide Report PDF",
-                                    interactive=False,
-                                    visible=False,
-                                )
-                                guided_export_file = gr.File(
-                                    label="Guide Workbook",
-                                    interactive=False,
-                                    visible=False,
-                                )
+                                    with gr.Column(elem_id="guide-input-wrap"):
+                                        guided_input = gr.Textbox(
+                                            label="Reply to the guide",
+                                            placeholder="Type your answer here...",
+                                            lines=5,
+                                        )
+                                        with gr.Row(elem_id="guide-actions"):
+                                            guided_send_btn = gr.Button("Send", variant="primary", size="sm")
+                                            guided_reset_btn = gr.Button("Start Over", variant="secondary", size="sm")
+                                with gr.Column(scale=3, elem_id="guide-side-panel"):
+                                    guided_key_numbers = gr.Markdown(guided_defaults.key_numbers_markdown)
+                                    guided_report_file = gr.File(
+                                        label="Guide Report PDF",
+                                        interactive=False,
+                                        visible=False,
+                                    )
+                                    guided_export_file = gr.File(
+                                        label="Guide Workbook",
+                                        interactive=False,
+                                        visible=False,
+                                    )
                     with gr.Tab("About & How To"):
                         with gr.Column(elem_id="case-setup-panel"):
                             gr.Markdown(_load_about_and_howto_markdown())
@@ -1119,43 +1128,44 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 latest_export_path,
             ],
         )
-        guided_send_outputs = [
-            guided_chatbot,
-            guided_state,
-            guided_input,
-            guided_key_numbers,
-            guided_report_file,
-            guided_export_file,
-            status,
-            forecast_table,
-            account_forecast_table,
-            forecast_summary,
-            report_markdown,
-            report_pdf_file,
-            export_file,
-            case_snapshot,
-            latest_report_path,
-            latest_export_path,
-            latest_forecast_summary,
-            *inputs,
-            imported_workbook_path,
-            workbook_input,
-        ]
-        guided_send_btn.click(
-            fn=guided_turn_ui,
-            inputs=[guided_input, guided_state, case_snapshot],
-            outputs=guided_send_outputs,
-        )
-        guided_input.submit(
-            fn=guided_turn_ui,
-            inputs=[guided_input, guided_state, case_snapshot],
-            outputs=guided_send_outputs,
-        )
-        guided_reset_btn.click(
-            fn=guided_reset_ui,
-            inputs=[case_snapshot],
-            outputs=guided_send_outputs,
-        )
+        if interactive_guide_enabled:
+            guided_send_outputs = [
+                guided_chatbot,
+                guided_state,
+                guided_input,
+                guided_key_numbers,
+                guided_report_file,
+                guided_export_file,
+                status,
+                forecast_table,
+                account_forecast_table,
+                forecast_summary,
+                report_markdown,
+                report_pdf_file,
+                export_file,
+                case_snapshot,
+                latest_report_path,
+                latest_export_path,
+                latest_forecast_summary,
+                *inputs,
+                imported_workbook_path,
+                workbook_input,
+            ]
+            guided_send_btn.click(
+                fn=guided_turn_ui,
+                inputs=[guided_input, guided_state, case_snapshot],
+                outputs=guided_send_outputs,
+            )
+            guided_input.submit(
+                fn=guided_turn_ui,
+                inputs=[guided_input, guided_state, case_snapshot],
+                outputs=guided_send_outputs,
+            )
+            guided_reset_btn.click(
+                fn=guided_reset_ui,
+                inputs=[case_snapshot],
+                outputs=guided_send_outputs,
+            )
 
     return demo
 
