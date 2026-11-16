@@ -2092,6 +2092,7 @@ def test_workspace_output_tuple_expands_table_row_counts_for_imported_case():
     accounts_update = result[PLAN_UI_INPUT_KEYS.index("accounts")]
     assert accounts_update["value"] == values["accounts"]
     assert accounts_update["row_count"] == (len(values["accounts"]), "dynamic")
+    assert result[PLAN_UI_INPUT_KEYS.index("planned_annual_spending")] == 96000.0
 
 
 def test_simple_ui_output_tuple_expands_table_row_counts_for_imported_case():
@@ -2109,6 +2110,7 @@ def test_simple_ui_output_tuple_expands_table_row_counts_for_imported_case():
     buckets_update = result[PLAN_UI_INPUT_KEYS.index("buckets")]
     assert buckets_update["value"] == values["buckets"]
     assert buckets_update["row_count"] == (len(values["buckets"]), "dynamic")
+    assert result[PLAN_UI_INPUT_KEYS.index("planned_annual_spending")] == 96000.0
 
 
 def test_clerk_path_helpers():

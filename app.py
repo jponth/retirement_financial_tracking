@@ -255,6 +255,13 @@ CSS = (
 
 ABOUT_AND_HOWTO_PATH = Path(__file__).resolve().parent / "templates" / "about_and_howto.md"
 ABOUT_AND_HOWTO_FALLBACK = "## About & How To\n\nUnable to load the About content file."
+NUMERIC_MONEY_SCALAR_KEYS = {
+    "planned_annual_spending",
+    "target_cash_reserve",
+    "hsa_contribution_limit_self",
+    "hsa_contribution_limit_family",
+    "hsa_catch_up_amount",
+}
 
 
 def _interactive_guide_enabled() -> bool:
@@ -1301,12 +1308,24 @@ def _workspace_form_values_tuple(values: dict[str, object]) -> tuple[object, ...
                 )
             )
         else:
-            form_values.append(value)
+            form_values.append(_coerce_workspace_scalar_value(key, value))
     return tuple(form_values)
 
 
 def _mild_error_message(message: str) -> str:
     return f"<span style='color:#9B5656'>{message}</span>"
+
+
+def _coerce_workspace_scalar_value(key: str, value: object) -> object:
+    if key not in NUMERIC_MONEY_SCALAR_KEYS or not isinstance(value, str):
+        return value
+    normalized = value.replace(",", "").strip()
+    if not normalized:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return value
 
 
 def _skip_tuple(count: int) -> tuple[object, ...]:

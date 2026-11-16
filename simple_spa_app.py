@@ -18,6 +18,14 @@ from retirement_financial_tracking.ui_helpers import (
     ui_values_to_plan,
 )
 
+NUMERIC_MONEY_SCALAR_KEYS = {
+    "planned_annual_spending",
+    "target_cash_reserve",
+    "hsa_contribution_limit_self",
+    "hsa_contribution_limit_family",
+    "hsa_catch_up_amount",
+}
+
 
 PEOPLE_HEADERS = [
     "person_id",
@@ -995,46 +1003,46 @@ def close_report_popup():
 
 def _ui_output_tuple(values: dict[str, object], status_message: str, imported_path: str | None):
     return (
-        values["plan_id"],
-        values["household_name"],
-        values["base_year"],
-        values["state"],
-        values["filing_status"],
-        values["tax_model"],
-        values["tax_projection_mode"],
-        values["projection_years"],
-        values["inflation_rate"],
-        values["default_bucket_expense_years"],
-        values["return_model_type"],
-        values["return_scenario_type"],
-        values["monte_carlo_simulations"],
-        values["monte_carlo_seed"],
-        values["monte_carlo_depletion_target_year"],
-        values["monte_carlo_depletion_target_age"],
-        values["bucket_return_short_term"],
-        values["bucket_return_intermediate"],
-        values["bucket_return_long_term"],
-        values["bucket_return_other"],
-        values["bucket_volatility_short_term"],
-        values["bucket_volatility_intermediate"],
-        values["bucket_volatility_long_term"],
-        values["bucket_volatility_other"],
-        values["planned_annual_spending"],
-        values["target_cash_reserve"],
-        values["federal_effective_tax_rate"],
-        values["state_effective_tax_rate"],
-        values["rmd_start_age"],
-        values["auto_fund_shortfall"],
-        values["use_withdrawal_priority_policy"],
-        values["withdrawal_tax_priority"],
-        values["withdrawal_owner_priority"],
-        values["withdrawal_account_type_priority"],
-        values["withdrawal_allocation_method"],
-        values["roth_handling_policy"],
-        values["hsa_contribution_limit_self"],
-        values["hsa_contribution_limit_family"],
-        values["hsa_catch_up_amount"],
-        values["notes"],
+        _coerce_scalar_output_value("plan_id", values["plan_id"]),
+        _coerce_scalar_output_value("household_name", values["household_name"]),
+        _coerce_scalar_output_value("base_year", values["base_year"]),
+        _coerce_scalar_output_value("state", values["state"]),
+        _coerce_scalar_output_value("filing_status", values["filing_status"]),
+        _coerce_scalar_output_value("tax_model", values["tax_model"]),
+        _coerce_scalar_output_value("tax_projection_mode", values["tax_projection_mode"]),
+        _coerce_scalar_output_value("projection_years", values["projection_years"]),
+        _coerce_scalar_output_value("inflation_rate", values["inflation_rate"]),
+        _coerce_scalar_output_value("default_bucket_expense_years", values["default_bucket_expense_years"]),
+        _coerce_scalar_output_value("return_model_type", values["return_model_type"]),
+        _coerce_scalar_output_value("return_scenario_type", values["return_scenario_type"]),
+        _coerce_scalar_output_value("monte_carlo_simulations", values["monte_carlo_simulations"]),
+        _coerce_scalar_output_value("monte_carlo_seed", values["monte_carlo_seed"]),
+        _coerce_scalar_output_value("monte_carlo_depletion_target_year", values["monte_carlo_depletion_target_year"]),
+        _coerce_scalar_output_value("monte_carlo_depletion_target_age", values["monte_carlo_depletion_target_age"]),
+        _coerce_scalar_output_value("bucket_return_short_term", values["bucket_return_short_term"]),
+        _coerce_scalar_output_value("bucket_return_intermediate", values["bucket_return_intermediate"]),
+        _coerce_scalar_output_value("bucket_return_long_term", values["bucket_return_long_term"]),
+        _coerce_scalar_output_value("bucket_return_other", values["bucket_return_other"]),
+        _coerce_scalar_output_value("bucket_volatility_short_term", values["bucket_volatility_short_term"]),
+        _coerce_scalar_output_value("bucket_volatility_intermediate", values["bucket_volatility_intermediate"]),
+        _coerce_scalar_output_value("bucket_volatility_long_term", values["bucket_volatility_long_term"]),
+        _coerce_scalar_output_value("bucket_volatility_other", values["bucket_volatility_other"]),
+        _coerce_scalar_output_value("planned_annual_spending", values["planned_annual_spending"]),
+        _coerce_scalar_output_value("target_cash_reserve", values["target_cash_reserve"]),
+        _coerce_scalar_output_value("federal_effective_tax_rate", values["federal_effective_tax_rate"]),
+        _coerce_scalar_output_value("state_effective_tax_rate", values["state_effective_tax_rate"]),
+        _coerce_scalar_output_value("rmd_start_age", values["rmd_start_age"]),
+        _coerce_scalar_output_value("auto_fund_shortfall", values["auto_fund_shortfall"]),
+        _coerce_scalar_output_value("use_withdrawal_priority_policy", values["use_withdrawal_priority_policy"]),
+        _coerce_scalar_output_value("withdrawal_tax_priority", values["withdrawal_tax_priority"]),
+        _coerce_scalar_output_value("withdrawal_owner_priority", values["withdrawal_owner_priority"]),
+        _coerce_scalar_output_value("withdrawal_account_type_priority", values["withdrawal_account_type_priority"]),
+        _coerce_scalar_output_value("withdrawal_allocation_method", values["withdrawal_allocation_method"]),
+        _coerce_scalar_output_value("roth_handling_policy", values["roth_handling_policy"]),
+        _coerce_scalar_output_value("hsa_contribution_limit_self", values["hsa_contribution_limit_self"]),
+        _coerce_scalar_output_value("hsa_contribution_limit_family", values["hsa_contribution_limit_family"]),
+        _coerce_scalar_output_value("hsa_catch_up_amount", values["hsa_catch_up_amount"]),
+        _coerce_scalar_output_value("notes", values["notes"]),
         _table_update(values["people"]),
         _table_update(values["buckets"]),
         _table_update(values["accounts"]),
@@ -1049,6 +1057,18 @@ def _ui_output_tuple(values: dict[str, object], status_message: str, imported_pa
 def _table_update(value: object) -> dict[str, object]:
     row_count = max(len(value), 1) if isinstance(value, list) else 1
     return gr.update(value=value, row_count=(row_count, "dynamic"))
+
+
+def _coerce_scalar_output_value(key: str, value: object) -> object:
+    if key not in NUMERIC_MONEY_SCALAR_KEYS or not isinstance(value, str):
+        return value
+    normalized = value.replace(",", "").strip()
+    if not normalized:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return value
 
 
 def _mild_error_message(message: str) -> str:
