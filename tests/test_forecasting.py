@@ -6,6 +6,7 @@ import pytest
 
 import app as app_module
 import combined_ui as combined_ui_module
+import simple_spa_app as simple_spa_app_module
 import simple_spa as simple_spa_module
 from retirement_financial_tracking.clerk_auth import (
     ClerkSettings,
@@ -458,6 +459,24 @@ def test_import_case_workbook_reads_tabular_sheets_by_header_name(tmp_path):
     assert ira_account.opening_balance == Decimal("1200000.00")
 
 
+def test_import_case_workbook_rejects_invalid_taxable_account_type_with_valid_values(tmp_path):
+    plan = sample_plan("3-Bucket Sample")
+    path = tmp_path / "legacy-taxable.xlsx"
+    export_case_workbook(path, plan)
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path)
+    accounts_sheet = workbook["Accounts"]
+    header_row = [cell.value for cell in next(accounts_sheet.iter_rows(min_row=1, max_row=1))]
+    account_type_index = header_row.index("account_type") + 1
+    accounts_sheet.cell(row=2, column=account_type_index).value = "taxable"
+    workbook.save(path)
+
+    with pytest.raises(ValueError, match="Invalid account_type `taxable`.*taxable_brokerage"):
+        import_case_workbook(path)
+
+
 def test_household_plan_rejects_duplicate_account_ids():
     with pytest.raises(ValueError, match="Duplicate account IDs are not allowed: acct-1"):
         HouseholdPlan(
@@ -707,6 +726,14 @@ def test_ui_values_to_plan_accepts_gradio_dataframe_values():
         is WithdrawalAllocationMethod.PRO_RATA
     )
     assert restored.settings.roth_handling_policy is RothHandlingPolicy.LAST_RESORT
+
+
+def test_ui_values_to_plan_rejects_invalid_taxable_account_type_with_valid_values():
+    values = plan_to_ui_values(sample_plan("3-Bucket Sample"))
+    values["accounts"][0][2] = "taxable"
+
+    with pytest.raises(ValueError, match="Invalid account_type `taxable`.*taxable_brokerage"):
+        ui_values_to_plan(UIPlanPayload.from_mapping(values))
 
 
 def test_ui_plan_payload_rejects_wrong_value_count():
@@ -2040,6 +2067,40 @@ def test_combined_ui_builds_with_both_paths():
     assert "/sign-out" in route_paths
 
 
+def test_workspace_output_tuple_expands_table_row_counts_for_imported_case():
+    values = plan_to_ui_values(sample_plan("3-Bucket Sample"))
+    values["accounts"] = values["accounts"] + [
+        ["acct-extra", "Extra Account", "taxable_brokerage", "joint", "Test", "taxable", "5,000", 0.05, "b3", True, True, False]
+    ]
+
+    result = app_module._workspace_output_tuple(
+        values,
+        status_message="Imported workbook successfully.",
+        imported_path="/tmp/sample.xlsx",
+    )
+
+    accounts_update = result[PLAN_UI_INPUT_KEYS.index("accounts")]
+    assert accounts_update["value"] == values["accounts"]
+    assert accounts_update["row_count"] == (len(values["accounts"]), "dynamic")
+
+
+def test_simple_ui_output_tuple_expands_table_row_counts_for_imported_case():
+    values = plan_to_ui_values(sample_plan("3-Bucket Sample"))
+    values["buckets"] = values["buckets"] + [
+        ["b4", "Overflow", "other", "0", 0.0, "", ""]
+    ]
+
+    result = simple_spa_app_module._ui_output_tuple(
+        values,
+        "Imported workbook successfully.",
+        "/tmp/sample.xlsx",
+    )
+
+    buckets_update = result[PLAN_UI_INPUT_KEYS.index("buckets")]
+    assert buckets_update["value"] == values["buckets"]
+    assert buckets_update["row_count"] == (len(values["buckets"]), "dynamic")
+
+
 def test_clerk_path_helpers():
     assert protected_ui_path("/")
     assert protected_ui_path("/workspace")
@@ -2299,7 +2360,9 @@ def test_guided_turn_ui_syncs_workspace_forms(monkeypatch):
     assert result[16] == "Forecast summary"
     assert result[form_start] == values["plan_id"]
     assert result[form_start + 1] == values["household_name"]
-    assert result[form_start + len(PLAN_UI_INPUT_KEYS) - 1] == values["snapshots"]
+    snapshots_update = result[form_start + len(PLAN_UI_INPUT_KEYS) - 1]
+    assert snapshots_update["value"] == values["snapshots"]
+    assert snapshots_update["row_count"] == (len(values["snapshots"]), "dynamic")
     assert result[imported_path_index] is None
     assert result[workbook_input_index]["value"] is None
 

@@ -37,6 +37,7 @@ from retirement_financial_tracking.domain.models import (
     WithdrawalTaxPriority,
 )
 from retirement_financial_tracking.io import export_case_workbook, import_case_workbook
+from retirement_financial_tracking.normalization import parse_account_type_value
 from retirement_financial_tracking.reporting import generate_report_assets
 from retirement_financial_tracking.services import generate_forecast
 
@@ -1086,7 +1087,9 @@ def _parse_accounts(rows: list[list[object]]) -> list[Account]:
             Account(
                 account_id=str(row[0]),
                 account_name=_str_or_default(row, 1, "Account"),
-                account_type=AccountType(_str_or_default(row, 2, AccountType.OTHER.value)),
+                account_type=parse_account_type_value(
+                    _str_or_default(row, 2, AccountType.OTHER.value)
+                ),
                 owner=AccountOwner(_str_or_default(row, 3, AccountOwner.PRIMARY.value)),
                 custodian=_str_or_default(row, 4, ""),
                 tax_treatment=TaxTreatment(_str_or_default(row, 5, TaxTreatment.TAXABLE.value)),

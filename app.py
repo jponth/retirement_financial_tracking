@@ -22,6 +22,7 @@ from retirement_financial_tracking.ui_theme import (
 from retirement_financial_tracking.ui_helpers import (
     DEFAULT_SAMPLE_NAME,
     PLAN_UI_INPUT_KEYS,
+    PLAN_UI_TABLE_KEYS,
     UIPlanPayload,
     export_plan_for_ui,
     forecast_with_report_for_ui,
@@ -761,6 +762,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="people-table",
                                         elem_classes=["numeric-table"],
                                         headers=PEOPLE_HEADERS,
+                                        row_count=(max(len(defaults["people"]), 4), "dynamic"),
                                         datatype=[
                                             "str",
                                             "str",
@@ -788,6 +790,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="accounts-table",
                                         elem_classes=["numeric-table"],
                                         headers=ACCOUNT_HEADERS,
+                                        row_count=(max(len(defaults["accounts"]), 6), "dynamic"),
                                         datatype=[
                                             "str",
                                             "str",
@@ -811,6 +814,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="buckets-table",
                                         elem_classes=["numeric-table"],
                                         headers=BUCKET_HEADERS,
+                                        row_count=(max(len(defaults["buckets"]), 4), "dynamic"),
                                         datatype=[
                                             "str",
                                             "str",
@@ -829,6 +833,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="cash-flows-table",
                                         elem_classes=["numeric-table"],
                                         headers=CASH_FLOW_HEADERS,
+                                        row_count=(max(len(defaults["cash_flows"]), 4), "dynamic"),
                                         datatype=[
                                             "str",
                                             "str",
@@ -850,6 +855,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="holdings-table",
                                         elem_classes=["numeric-table"],
                                         headers=HOLDING_HEADERS,
+                                        row_count=(max(len(defaults["holdings"]), 6), "dynamic"),
                                         datatype=[
                                             "str",
                                             "str",
@@ -871,6 +877,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                                         elem_id="snapshots-table",
                                         elem_classes=["numeric-table"],
                                         headers=SNAPSHOT_HEADERS,
+                                        row_count=(max(len(defaults["snapshots"]), 4), "dynamic"),
                                         datatype=["str", "str", "str", "str", "str"],
                                         value=defaults["snapshots"],
                                         interactive=True,
@@ -1180,7 +1187,7 @@ def load_workbook_case(path: str | None):
     except Exception as exc:
         return _workspace_output_tuple(
             plan_to_ui_values(sample_plan()),
-            status_message=f"Import failed: `{exc}`",
+            status_message=_mild_error_message(f"Import failed: {exc}"),
             imported_path=None,
         )
 
@@ -1272,7 +1279,24 @@ def _workspace_output_tuple(
 
 
 def _workspace_form_values_tuple(values: dict[str, object]) -> tuple[object, ...]:
-    return tuple(values[key] for key in PLAN_UI_INPUT_KEYS)
+    form_values: list[object] = []
+    for key in PLAN_UI_INPUT_KEYS:
+        value = values[key]
+        if key in PLAN_UI_TABLE_KEYS:
+            row_count = max(len(value), 1) if isinstance(value, list) else 1
+            form_values.append(
+                gr.update(
+                    value=value,
+                    row_count=(row_count, "dynamic"),
+                )
+            )
+        else:
+            form_values.append(value)
+    return tuple(form_values)
+
+
+def _mild_error_message(message: str) -> str:
+    return f"<span style='color:#9B5656'>{message}</span>"
 
 
 def _skip_tuple(count: int) -> tuple[object, ...]:

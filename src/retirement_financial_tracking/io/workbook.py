@@ -40,6 +40,7 @@ from retirement_financial_tracking.domain.models import (
     WithdrawalTaxPriority,
     sum_money,
 )
+from retirement_financial_tracking.normalization import parse_account_type_value
 
 
 YEAR_NUMBER_FORMAT = "0"
@@ -271,28 +272,38 @@ def import_case_workbook(path: str | Path) -> HouseholdPlan:
         for row in _read_table_rows(buckets_sheet)
         if row.get("bucket_id") not in (None, "")
     ]
-    accounts = [
-        Account(
-            account_id=str(row["account_id"]),
-            account_name=str(row["account_name"]),
-            account_type=AccountType(
+    accounts = []
+    for row in _read_table_rows(accounts_sheet):
+        if row.get("account_id") in (None, ""):
+            continue
+        account_id = str(row["account_id"])
+        account_name = str(row["account_name"])
+        try:
+            account_type = parse_account_type_value(
                 str(row.get("account_type") or AccountType.OTHER.value)
-            ),
-            owner=AccountOwner(str(row["owner"])),
-            custodian=str(row.get("custodian") or ""),
-            tax_treatment=TaxTreatment(str(row["tax_treatment"])),
-            opening_balance=_to_decimal(row.get("opening_balance")),
-            expected_annual_return_rate=float(row.get("expected_annual_return_rate") or 0.0),
-            bucket_id=_to_optional_str(row.get("bucket_id")),
-            contribution_allowed=_to_bool(row.get("contribution_allowed"), default=True),
-            withdrawal_allowed=_to_bool(row.get("withdrawal_allowed"), default=True),
-            roth_conversion_source_allowed=_to_bool(
-                row.get("roth_conversion_source_allowed")
-            ),
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"{exc} (account_id={account_id}, account_name={account_name})"
+            ) from exc
+        accounts.append(
+            Account(
+                account_id=account_id,
+                account_name=account_name,
+                account_type=account_type,
+                owner=AccountOwner(str(row["owner"])),
+                custodian=str(row.get("custodian") or ""),
+                tax_treatment=TaxTreatment(str(row["tax_treatment"])),
+                opening_balance=_to_decimal(row.get("opening_balance")),
+                expected_annual_return_rate=float(row.get("expected_annual_return_rate") or 0.0),
+                bucket_id=_to_optional_str(row.get("bucket_id")),
+                contribution_allowed=_to_bool(row.get("contribution_allowed"), default=True),
+                withdrawal_allowed=_to_bool(row.get("withdrawal_allowed"), default=True),
+                roth_conversion_source_allowed=_to_bool(
+                    row.get("roth_conversion_source_allowed")
+                ),
+            )
         )
-        for row in _read_table_rows(accounts_sheet)
-        if row.get("account_id") not in (None, "")
-    ]
     holdings = [
         Holding(
             holding_id=str(row["holding_id"]),

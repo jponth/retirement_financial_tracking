@@ -657,6 +657,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="people-table",
                 elem_classes=["numeric-table"],
                 headers=PEOPLE_HEADERS,
+                row_count=(max(len(defaults["people"]), 4), "dynamic"),
                 datatype=[
                     "str", "str", "str", "number", "number", "number",
                     "number", "str", "number", "str", "bool",
@@ -671,6 +672,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="buckets-table",
                 elem_classes=["numeric-table"],
                 headers=BUCKET_HEADERS,
+                row_count=(max(len(defaults["buckets"]), 4), "dynamic"),
                 datatype=["str", "str", "str", "str", "number", "str", "str"],
                 value=defaults["buckets"],
                 interactive=True,
@@ -681,6 +683,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="accounts-table",
                 elem_classes=["numeric-table"],
                 headers=ACCOUNT_HEADERS,
+                row_count=(max(len(defaults["accounts"]), 6), "dynamic"),
                 datatype=[
                     "str", "str", "str", "str", "str", "str",
                     "str", "number", "str", "bool", "bool", "bool",
@@ -694,6 +697,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="cash-flows-table",
                 elem_classes=["numeric-table"],
                 headers=CASH_FLOW_HEADERS,
+                row_count=(max(len(defaults["cash_flows"]), 4), "dynamic"),
                 datatype=[
                     "str", "str", "str", "str", "number",
                     "number", "number", "str", "str", "str",
@@ -707,6 +711,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="holdings-table",
                 elem_classes=["numeric-table"],
                 headers=HOLDING_HEADERS,
+                row_count=(max(len(defaults["holdings"]), 6), "dynamic"),
                 datatype=[
                     "str", "str", "str", "str", "str",
                     "str", "str", "number", "str", "str",
@@ -720,6 +725,7 @@ def build_ui(*, show_combined_nav: bool = False) -> gr.Blocks:
                 elem_id="snapshots-table",
                 elem_classes=["numeric-table"],
                 headers=SNAPSHOT_HEADERS,
+                row_count=(max(len(defaults["snapshots"]), 4), "dynamic"),
                 datatype=["str", "str", "str", "str", "str"],
                 value=defaults["snapshots"],
                 interactive=True,
@@ -934,7 +940,7 @@ def load_workbook_case(path: str | None):
         return _ui_output_tuple(values, "Imported workbook successfully.", path)
     except Exception as exc:
         sample = plan_to_ui_values(sample_plan())
-        return _ui_output_tuple(sample, f"Import failed: `{exc}`", None)
+        return _ui_output_tuple(sample, _mild_error_message(f"Import failed: {exc}"), None)
 
 
 def run_forecast_ui(*args):
@@ -1029,15 +1035,24 @@ def _ui_output_tuple(values: dict[str, object], status_message: str, imported_pa
         values["hsa_contribution_limit_family"],
         values["hsa_catch_up_amount"],
         values["notes"],
-        values["people"],
-        values["buckets"],
-        values["accounts"],
-        values["cash_flows"],
-        values["holdings"],
-        values["snapshots"],
+        _table_update(values["people"]),
+        _table_update(values["buckets"]),
+        _table_update(values["accounts"]),
+        _table_update(values["cash_flows"]),
+        _table_update(values["holdings"]),
+        _table_update(values["snapshots"]),
         status_message,
         imported_path,
     )
+
+
+def _table_update(value: object) -> dict[str, object]:
+    row_count = max(len(value), 1) if isinstance(value, list) else 1
+    return gr.update(value=value, row_count=(row_count, "dynamic"))
+
+
+def _mild_error_message(message: str) -> str:
+    return f"<span style='color:#9B5656'>{message}</span>"
 
 
 if __name__ == "__main__":
